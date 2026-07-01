@@ -72,6 +72,7 @@ Keep these invariants in mind while applying `AGENTS.md`:
 
 - `AGENTS.md` stays concise and repo-wide.
 - Detailed manuals stay in `doc/`, `docs/`, package READMEs, plugin/adapter docs, or skills.
+- Internal architecture lives in [`doc/architecture/`](doc/architecture/index.md) (mapped by [`doc/index.md`](doc/index.md)); durable plans/issues/learning/practices live under `doc/` per [`references/repo-records.md`](references/repo-records.md). Keep the relevant architecture doc current when a subsystem changes.
 - Public docs navigation lives in `docs/docs.json`.
 - For doc moves, use copy-first/link-safe migration: add the replacement, update links/navigation/sources, verify references, then remove old content only when requested.
 - Do not expose internal issue IDs, private URLs, local run identifiers, secrets, tailnet links, or `agent://` links in public docs, PRs, commits, comments, or artifact filenames.

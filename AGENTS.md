@@ -38,6 +38,8 @@ Documentation namespaces:
 
 When updating docs, update the narrow module you touched and its index/navigation/source references. Do not rescan or rewrite unrelated docs. For doc moves, use copy-first/link-safe migration: create the replacement, update links/navigation/sources, verify references, then remove the old file only when the task explicitly calls for deletion.
 
+Internal docs map: [`doc/index.md`](doc/index.md). Modular records live under [`doc/architecture/`](doc/architecture/index.md) (subsystem design), [`doc/plans/`](doc/plans/README.md), [`doc/issues/`](doc/issues/README.md), [`doc/learning/`](doc/learning/README.md), and [`doc/practices/`](doc/practices/README.md). Maintain them per [`references/repo-records.md`](references/repo-records.md), and update the relevant architecture doc in the same change that alters a subsystem's structure.
+
 ## 3. Repo Map
 
 - `server/`: Express REST API, auth, orchestration services, workspace/runtime services, plugin host services, and server tests.
@@ -265,6 +267,7 @@ Docs:
 
 - Public docs changes under `docs/` must keep `docs/docs.json` navigation accurate.
 - Internal docs changes under `doc/` should link to canonical product/developer/ops docs instead of duplicating them in root files.
+- Internal architecture and the record system: [`doc/index.md`](doc/index.md) maps [`doc/architecture/`](doc/architecture/index.md), [`doc/plans/`](doc/plans/README.md), [`doc/issues/`](doc/issues/README.md), [`doc/learning/`](doc/learning/README.md), and [`doc/practices/`](doc/practices/README.md); follow [`references/repo-records.md`](references/repo-records.md) and keep the relevant architecture doc current when a subsystem's structure changes.
 - Keep stale-doc discoveries as explicit follow-up notes unless the task includes fixing them.
 
 Skills and templates:
