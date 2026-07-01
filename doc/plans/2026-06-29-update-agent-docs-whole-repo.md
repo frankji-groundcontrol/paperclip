@@ -1,3 +1,111 @@
+# Update Agent Docs from Whole-Repo Evidence Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Update `AGENTS.md` and create a thin `CLAUDE.md` so Paperclip's agent guidance reflects direct whole-repo evidence, integrates transferable guidance from `frankji-groundcontrol/franky-frank` and `multica-ai/andrej-karpathy-skills`, and avoids generic scaffolded docs.
+
+**Architecture:** Keep `AGENTS.md` as the authoritative cross-agent contributor guide. Add `CLAUDE.md` only as a Claude-specific entry point that points back to `AGENTS.md`, records Claude workflow defaults, and does not duplicate domain manuals. Use repo-relative links and concise rules; reference canonical domain docs instead of copying full server, API, deployment, plugin, or release manuals.
+
+**Tech Stack:** Markdown docs in a pnpm 9.15 / Node >=20 TypeScript monorepo with Express, React/Vite, Drizzle, Vitest, Playwright, promptfoo, Docker, adapter/plugin packages, project skills, and Paperclip control-plane artifact workflows.
+
+---
+
+## Source Evidence Behind This Plan
+
+This plan is not a scaffold. It is based on these completed read-only audits:
+
+- Local root/config/docs audit: `AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `ROADMAP.md`, `package.json`, `pnpm-workspace.yaml`, `tsconfig*.json`, `vitest.config.ts`, `.github/**`, `Dockerfile`, `.env.example`, `.npmrc`, `.gitignore`.
+- Whole-repo domain audit: `server/`, `ui/`, `cli/`, `packages/shared`, `packages/db`, `packages/adapters`, `packages/plugins`, `packages/teams-catalog`, `packages/skills-catalog`, `packages/mcp-server`, `skills/`, `.agents/`, `doc/`, `docs/`, `tests/`, `scripts/`, `docker/`, `evals/`, `tools/`, `releases/`, `patches/`, `report/`, screenshots directories, and `.claude/`.
+- Follow-up server audit anchors: `server/src/app.ts`, `server/src/middleware/auth.ts`, `server/src/routes/authz.ts`, `server/src/services/authorization.ts`, `server/src/errors.ts`, `server/src/middleware/error-handler.ts`, `server/src/middleware/validate.ts`, `server/src/routes/openapi.ts`, `server/src/index.ts`, orchestration routes/services, and DB runtime/migration files.
+- Follow-up docs/testing/ops audits: `doc/GOAL.md`, `doc/PRODUCT.md`, `doc/SPEC-implementation.md`, `doc/DEVELOPING.md`, `doc/DATABASE.md`, `doc/DOCKER.md`, release/publishing docs, plugin and adapter docs, `docs/docs.json`, `tests/e2e/**`, `tests/release-smoke/**`, `evals/promptfoo/**`, operational scripts, Docker compose files, runtime service scripts, artifacts docs, and project skills.
+- External source audit: `frankji-groundcontrol/franky-frank` README and `_meta` knowledge-base docs; `multica-ai/andrej-karpathy-skills` `README.md`, `CLAUDE.md`, and `skills/karpathy-guidelines/SKILL.md`.
+
+Important audit conclusions:
+
+- `AGENTS.md` exists and is the root contributor guide; `CLAUDE.md` does not exist yet.
+- Existing `AGENTS.md` has stale `PGlite` wording, an incomplete repo map, duplicate `## 11` headings, and a self-referential fork note.
+- Server route composition is in `server/src/app.ts`; `server/src/routes/index.ts` is a re-export surface, not the main registration point.
+- Public authenticated deployments require a real `postgres`/`postgresql` `DATABASE_URL`; embedded PostgreSQL is for local/non-cloud contexts.
+- `docs/` is public/user/admin documentation governed by `docs/docs.json`; `doc/` is internal developer/product/operations documentation.
+- Root docs should link to detailed domain docs rather than duplicate route tables, endpoint schemas, Docker recipes, release procedures, plugin specs, or skill manuals.
+- Transferable external guidance should be paraphrased into Paperclip-local workflow rules: whole-repo evidence, incremental docs maintenance, copy-first doc moves, Think Before Coding, Simplicity First, Surgical Changes, and Goal-Driven Execution.
+
+## File Structure
+
+- Modify: `/home/frankji/Projects/paperclip/AGENTS.md`
+  - Responsibility: canonical cross-agent contributor guide for this repository.
+  - Change type: full-file Markdown update that preserves useful current content, removes stale wording, fixes heading numbering, adds audited repo-wide guidance, and keeps fork-only details isolated.
+- Create: `/home/frankji/Projects/paperclip/CLAUDE.md`
+  - Responsibility: thin Claude-specific entry point that delegates repo policy to `AGENTS.md` and records Claude workflow expectations.
+- Do not modify: `doc/`, `docs/`, package docs, skills, generated catalog content, `.github/`, scripts, tests, or code in this implementation. Link to those files only.
+- Do not commit unless the user explicitly asks; Claude Code session instructions require commits/pushes only on request.
+
+---
+
+### Task 1: Preflight and Current-State Confirmation
+
+**Files:**
+- Read: `/home/frankji/Projects/paperclip/AGENTS.md`
+- Check: `/home/frankji/Projects/paperclip/CLAUDE.md`
+
+- [ ] **Step 1: Confirm branch and working tree state**
+
+Run:
+
+```bash
+git -C /home/frankji/Projects/paperclip status --short --branch
+```
+
+Expected:
+
+- Current branch should be the user's maintained branch, usually `franky` on this host.
+- If uncommitted changes exist, inspect them before editing and avoid overwriting unrelated work.
+
+- [ ] **Step 2: Confirm target file existence**
+
+Run:
+
+```bash
+test -f /home/frankji/Projects/paperclip/AGENTS.md && printf 'AGENTS.md exists\n'
+test -e /home/frankji/Projects/paperclip/CLAUDE.md && printf 'CLAUDE.md exists\n' || printf 'CLAUDE.md missing\n'
+```
+
+Expected:
+
+```text
+AGENTS.md exists
+CLAUDE.md missing
+```
+
+If `CLAUDE.md` exists, read it before editing and merge the target content from Task 3 instead of blindly overwriting.
+
+- [ ] **Step 3: Re-read existing `AGENTS.md` before editing**
+
+Use the file read tool on:
+
+```text
+/home/frankji/Projects/paperclip/AGENTS.md
+```
+
+Expected observations from the current file:
+
+- It starts with `# AGENTS.md`.
+- It uses `Use embedded PGlite in dev by leaving DATABASE_URL unset`, which is stale.
+- It has duplicate `## 11` headings.
+- It has a fork-specific section ending with `See root AGENTS.md for full details`, which is self-referential.
+
+---
+
+### Task 2: Replace `AGENTS.md` with Whole-Repo Grounded Root Guidance
+
+**Files:**
+- Modify: `/home/frankji/Projects/paperclip/AGENTS.md`
+
+- [ ] **Step 1: Replace the file content with this complete Markdown**
+
+Write this exact content to `/home/frankji/Projects/paperclip/AGENTS.md`:
+
+````markdown
 # AGENTS.md
 
 Guidance for human and AI contributors working in this repository.
@@ -380,9 +488,317 @@ A change is done when all are true:
 
 Fork/local notes are not universal upstream guidance. Verify the current branch and package state before applying them outside this checkout.
 
-- Default working branch: on this host/fork the maintained default branch is `franky`. Unless the maintainer names another branch, "merge", "commit", and "push" mean on `franky`. Do not commit or push to `master` or the upstream default branch without an explicit instruction.
 - This checkout may carry QoL patches and built-in adapter stories that differ from upstream docs.
 - Keep Hermes/OpenClaw gateway wording aligned with current adapter IDs and onboarding docs; do not preserve stale generic `adapterType=openclaw` examples when current docs require gateway-specific IDs.
 - Older branches may document plugin-only Hermes; current built-ins and override behavior must be verified against the branch being edited.
 - Port, NTFS, cache, and process-kill workarounds are local troubleshooting notes. Do not copy them into public docs or make them default instructions for all contributors.
 - If re-copying upstream source into a fork with local UI patches, re-check local diffs such as transcript grouping and dashboard excerpt behavior before overwriting.
+````
+
+- [ ] **Step 2: Confirm stale strings and duplicate numbering are gone**
+
+Run:
+
+```bash
+rg -n "PGlite|embedded SQLite|adapterType=openclaw|See root AGENTS.md|## 11\." /home/frankji/Projects/paperclip/AGENTS.md
+```
+
+Expected:
+
+- No matches for `PGlite`, `embedded SQLite`, `adapterType=openclaw`, or `See root AGENTS.md`.
+- No duplicate `## 11.` section; the only `## 11.` heading should be `## 11. Verification and Testing`.
+
+---
+
+### Task 3: Create Thin Claude-Specific `CLAUDE.md`
+
+**Files:**
+- Create: `/home/frankji/Projects/paperclip/CLAUDE.md`
+
+- [ ] **Step 1: Write this complete file**
+
+Write this exact content to `/home/frankji/Projects/paperclip/CLAUDE.md`:
+
+````markdown
+# CLAUDE.md
+
+Claude-specific entry point for working in this Paperclip checkout.
+
+## Start Here
+
+Read `AGENTS.md` first. It is the authoritative cross-agent guide for this repository.
+This file only adds Claude-specific operating defaults and must not drift into a second copy of the full repo manual.
+
+Required first reads for non-trivial repository work:
+
+1. `AGENTS.md`
+2. `doc/GOAL.md`
+3. `doc/PRODUCT.md`
+4. `doc/SPEC-implementation.md`
+5. `doc/DEVELOPING.md`
+6. `doc/DATABASE.md`
+
+For public docs work, also inspect `docs/docs.json` and the affected `docs/**` pages.
+For internal developer/product/ops docs work, inspect the affected `doc/**` files.
+
+## Whole-Repo Evidence Rule
+
+Do not scaffold generic guidance for this repo. Before updating root docs, architecture guidance, or cross-cutting behavior, read the relevant repository areas and ground the change in existing files.
+
+For broad doc updates, check the affected domains explicitly:
+
+- root config and `.github/`
+- `server/`
+- `ui/`
+- `cli/`
+- `packages/`
+- `doc/` and `docs/`
+- `tests/` and `evals/`
+- `scripts/`, `docker/`, `tools/`, and `releases/`
+- `skills/`, `.claude/skills/`, and `.agents/`
+
+When coverage is partial, say so and limit the change to the evidence read.
+
+## Claude Workflow Defaults
+
+- Use relevant skills before acting when a skill applies.
+- For non-trivial implementation, plan from source evidence before editing.
+- Use subagents or workflows for independent repo-wide research, then inspect and synthesize their outputs before editing.
+- Dispatch is not completion: verify worker outputs, diffs, tests, and artifact links yourself.
+- Keep visible task tracking current; do not finish while work is still marked in progress.
+- Do not commit or push unless the user explicitly asks.
+
+## Behavioral Guardrails
+
+Use the local adaptation of the Karpathy-style workflow:
+
+1. Think before coding: state assumptions and success criteria for non-trivial work.
+2. Simplicity first: solve today's requirement without speculative abstractions.
+3. Surgical changes: touch only lines tied to the request and match existing style.
+4. Goal-driven execution: verify against the stated outcome; reproduce bugs before fixing when practical.
+
+Ask for clarification only when ambiguity changes security, privacy, data scope, API contracts, user-visible behavior, cost, or external side effects. Otherwise, state a reasonable assumption and proceed.
+
+## Paperclip-Specific Priorities
+
+Keep these invariants in mind while applying `AGENTS.md`:
+
+- Company boundaries are mandatory across server routes, services, UI state, CLI/API interactions, artifacts, and docs examples.
+- Schema/API changes must stay synchronized across `packages/db`, `packages/shared`, `server`, `ui`, `cli`, and docs.
+- Governed actions, approvals, budgets, activity logs, secrets, runtime workspaces, plugin trust, and low-trust agent boundaries are control-plane contracts, not optional polish.
+- Public authenticated deployments require real PostgreSQL configuration and secrets; do not document embedded DB fallback as production-safe.
+- Generated deliverables should go through the Paperclip artifact/work-product workflow when they are user-inspectable outputs.
+
+## Documentation Maintenance
+
+- `AGENTS.md` stays concise and repo-wide.
+- Detailed manuals stay in `doc/`, `docs/`, package READMEs, plugin/adapter docs, or skills.
+- Public docs navigation lives in `docs/docs.json`.
+- For doc moves, use copy-first/link-safe migration: add the replacement, update links/navigation/sources, verify references, then remove old content only when requested.
+- Do not expose internal issue IDs, private URLs, local run identifiers, secrets, tailnet links, or `agent://` links in public docs, PRs, commits, comments, or artifact filenames.
+````
+
+- [ ] **Step 2: Confirm `CLAUDE.md` delegates to `AGENTS.md` and is not a duplicate manual**
+
+Run:
+
+```bash
+wc -l /home/frankji/Projects/paperclip/CLAUDE.md /home/frankji/Projects/paperclip/AGENTS.md
+rg -n "Read `AGENTS.md` first|Do not scaffold generic guidance|Do not commit or push unless" /home/frankji/Projects/paperclip/CLAUDE.md
+```
+
+Expected:
+
+- `CLAUDE.md` is substantially shorter than `AGENTS.md`.
+- The grep command finds all three phrases.
+
+---
+
+### Task 4: Review Forbidden Content and Repo Evidence Coverage
+
+**Files:**
+- Review: `/home/frankji/Projects/paperclip/AGENTS.md`
+- Review: `/home/frankji/Projects/paperclip/CLAUDE.md`
+
+- [ ] **Step 1: Check required evidence anchors are present**
+
+Run:
+
+```bash
+rg -n "whole-repo|scaffold|SPEC-implementation|docs/docs\.json|server/src/app\.ts|server/src/routes/authz\.ts|server/src/services/authorization\.ts|server/src/routes/openapi\.ts|doc/AGENT-ARTIFACTS\.md|BETTER_AUTH_SECRET|DATABASE_URL|promptfoo|test:e2e:multiuser-authenticated|Karpathy|frankji-groundcontrol|franky-frank" /home/frankji/Projects/paperclip/AGENTS.md /home/frankji/Projects/paperclip/CLAUDE.md
+```
+
+Expected:
+
+- Matches for whole-repo/scaffold guidance.
+- Matches for `SPEC-implementation`, `docs/docs.json`, server auth/OpenAPI anchors, `doc/AGENT-ARTIFACTS.md`, `DATABASE_URL`, promptfoo/e2e guidance, and Karpathy-style principles.
+- `BETTER_AUTH_SECRET` and external repo names may be absent from the final docs if they would be too specific; if absent, confirm the docs still cover auth/secrets and external guidance in concise paraphrased form. Do not add names just to satisfy grep.
+
+- [ ] **Step 2: Check forbidden or stale content is absent**
+
+Run:
+
+```bash
+rg -n "PGlite|embedded SQLite|adapterType=openclaw|See root AGENTS.md|TODO|TBD|fill in|localhost.*public PR|tailnet|agent://" /home/frankji/Projects/paperclip/AGENTS.md /home/frankji/Projects/paperclip/CLAUDE.md
+```
+
+Expected:
+
+- No matches.
+- If `localhost` appears only in local dev instructions and not public PR guidance, that is acceptable.
+
+- [ ] **Step 3: Check headings are unique and ordered**
+
+Run:
+
+```bash
+rg -n "^## " /home/frankji/Projects/paperclip/AGENTS.md /home/frankji/Projects/paperclip/CLAUDE.md
+```
+
+Expected `AGENTS.md` headings:
+
+```text
+## 1. Purpose and Authority
+## 2. Read This First
+## 3. Repo Map
+## 4. Working Style
+## 5. Dev Setup, Runtime Services, and Lockfile Policy
+## 6. Core Engineering Rules
+## 7. Server, API, Auth, and Database Expectations
+## 8. Orchestration, Routines, Workspaces, Secrets, and Plugins
+## 9. UI, CLI, Packages, Adapters, and Catalogs
+## 10. Docs, Skills, Templates, and Artifact Hygiene
+## 11. Verification and Testing
+## 12. Operational Scripts, Release, Docker, and Deployment
+## 13. Pull Request and Public-Safety Requirements
+## 14. Definition of Done
+## 15. Fork-Specific and Local-Branch Notes
+```
+
+Expected `CLAUDE.md` headings:
+
+```text
+## Start Here
+## Whole-Repo Evidence Rule
+## Claude Workflow Defaults
+## Behavioral Guardrails
+## Paperclip-Specific Priorities
+## Documentation Maintenance
+```
+
+---
+
+### Task 5: Markdown and Diff Verification
+
+**Files:**
+- Verify: `/home/frankji/Projects/paperclip/AGENTS.md`
+- Verify: `/home/frankji/Projects/paperclip/CLAUDE.md`
+
+- [ ] **Step 1: Inspect the exact diff**
+
+Run:
+
+```bash
+git -C /home/frankji/Projects/paperclip diff -- AGENTS.md CLAUDE.md
+```
+
+Expected:
+
+- Only `AGENTS.md` and `CLAUDE.md` are shown.
+- `AGENTS.md` changes are documentation-only.
+- `CLAUDE.md` is a new documentation file.
+- No secrets, private URLs, internal issue IDs, or unrelated local paths are introduced.
+
+- [ ] **Step 2: Run markdown lint if the repo tool is available**
+
+Run:
+
+```bash
+pnpm -C /home/frankji/Projects/paperclip exec markdownlint-cli2 AGENTS.md CLAUDE.md
+```
+
+Expected:
+
+- PASS if `markdownlint-cli2` is available through the workspace.
+- If the command fails because the tool is not installed, record the exact failure and perform manual Markdown review instead. Do not add a new dependency just for this docs change.
+
+- [ ] **Step 3: Run docs-only status check**
+
+Run:
+
+```bash
+git -C /home/frankji/Projects/paperclip status --short
+```
+
+Expected:
+
+```text
+ M AGENTS.md
+?? CLAUDE.md
+```
+
+This plan file may also appear if it was saved in `doc/plans/`; include it in the handoff if it remains in the working tree.
+
+- [ ] **Step 4: Decide whether runtime tests are necessary**
+
+For this docs-only change, do not run stateful or broad runtime commands by default.
+
+Do not run these unless explicitly requested:
+
+```bash
+/home/frankji/Projects/paperclip/scripts/release.sh
+pnpm -C /home/frankji/Projects/paperclip test:e2e
+pnpm -C /home/frankji/Projects/paperclip test:release-smoke
+/home/frankji/Projects/paperclip/scripts/docker-onboard-smoke.sh
+/home/frankji/Projects/paperclip/scripts/docker-build-test.sh
+```
+
+Expected handoff wording:
+
+```text
+Not run: runtime tests/builds; change is Markdown-only. Performed diff, heading, stale-string, and markdown lint/manual review instead.
+```
+
+---
+
+### Task 6: Final Handoff
+
+**Files:**
+- Summarize: `/home/frankji/Projects/paperclip/AGENTS.md`
+- Summarize: `/home/frankji/Projects/paperclip/CLAUDE.md`
+- Summarize: `/home/frankji/Projects/paperclip/doc/plans/2026-06-29-update-agent-docs-whole-repo.md`
+
+- [ ] **Step 1: Prepare the final summary**
+
+Use this structure:
+
+```markdown
+Implemented docs updates grounded in the repo-wide audit.
+
+Changed:
+- `AGENTS.md`: expanded root guidance from whole-repo evidence; fixed stale embedded DB wording, repo map gaps, duplicate heading numbering, and self-referential fork note; added concise server/auth/db, orchestration, docs, testing, ops, PR, artifact, and external-principle guidance.
+- `CLAUDE.md`: added a thin Claude-specific entry point that delegates to `AGENTS.md` and captures whole-repo evidence, skill/workflow, and behavioral defaults.
+- `doc/plans/2026-06-29-update-agent-docs-whole-repo.md`: saved the implementation plan.
+
+Verification:
+- Ran `rg` checks for stale strings and required anchors.
+- Ran heading/order sanity check.
+- Ran `git diff -- AGENTS.md CLAUDE.md`.
+- Ran markdown lint if available, or manually reviewed Markdown if not installed.
+
+Not run:
+- Runtime tests/builds; change is Markdown-only.
+```
+
+- [ ] **Step 2: Do not commit unless asked**
+
+Do not run `git commit` or `git push` unless the user explicitly asks for it.
+
+If the user asks for a commit later, use a commit message like:
+
+```bash
+git add AGENTS.md CLAUDE.md doc/plans/2026-06-29-update-agent-docs-whole-repo.md
+git commit -m "docs: update agent guidance from repo audit"
+```
+
+Remember that Claude Code's commit attribution requirements apply if committing.

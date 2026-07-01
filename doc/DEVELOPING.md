@@ -23,6 +23,14 @@ GitHub Actions owns `pnpm-lock.yaml`.
 - Pull request CI validates dependency resolution when manifests change.
 - Pushes to `master` regenerate `pnpm-lock.yaml` with `pnpm install --lockfile-only --no-frozen-lockfile`, commit it back if needed, and then run verification with `--frozen-lockfile`.
 
+## Branch Convention
+
+On this host/fork, the default working branch is `franky`.
+
+- Unless a branch is named explicitly, "merge", "commit", and "push" mean on `franky`.
+- Do not commit or push to `master` or the upstream default branch without an explicit instruction.
+- This is a local maintainer convention for this checkout, not upstream guidance.
+
 ## Start Dev
 
 From repo root:
