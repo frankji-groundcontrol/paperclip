@@ -5,6 +5,10 @@ import {
   listCompanies,
   runJob,
   listJobs,
+  hireAgent,
+  listAgents,
+  listApprovals,
+  decideApproval,
 } from "../composables/usePaperclipSession";
 import type { Fetcher } from "../composables/useApi";
 
@@ -57,5 +61,31 @@ describe("usePaperclipSession", () => {
   it("listJobs reads the company's jobs", async () => {
     const jobs = await listJobs(mock(() => [{ id: "j1", status: "succeeded" }]).fetcher, "pcs_abc", "co-1");
     expect(jobs[0].id).toBe("j1");
+  });
+
+  it("hireAgent posts to the company agents endpoint with the session bearer", async () => {
+    const { fetcher, calls } = mock(() => ({ agentId: "ag-1", status: "pending_approval", approvalId: "ap-1" }));
+    const r = await hireAgent(fetcher, "pcs_abc", "co-1", "Data Analyst", "analyst");
+    expect(r.agentId).toBe("ag-1");
+    expect(r.status).toBe("pending_approval");
+    expect(calls[0].url).toBe("/api/paperclip/companies/co-1/agents");
+    expect(calls[0].options?.body).toEqual({ name: "Data Analyst", role: "analyst" });
+    expect(calls[0].options?.headers?.Authorization).toBe("Bearer pcs_abc");
+  });
+
+  it("listAgents and listApprovals read the right endpoints", async () => {
+    const a = await listAgents(mock(() => [{ id: "ag-1", name: "A", role: "r", status: "active" }]).fetcher, "pcs_abc", "co-1");
+    expect(a[0].id).toBe("ag-1");
+    const ap = await listApprovals(mock(() => ({ approvals: [{ id: "ap-1", type: "hire_agent", status: "pending" }] })).fetcher, "pcs_abc", "co-1");
+    expect(ap[0].id).toBe("ap-1");
+  });
+
+  it("decideApproval posts the decision to the approval decide endpoint", async () => {
+    const { fetcher, calls } = mock(() => ({ status: "approved" }));
+    const r = await decideApproval(fetcher, "pcs_abc", "ap-1", true);
+    expect(r.status).toBe("approved");
+    expect(calls[0].url).toBe("/api/paperclip/approvals/ap-1/decide");
+    expect(calls[0].options?.body).toEqual({ approve: true });
+    expect(calls[0].options?.headers?.Authorization).toBe("Bearer pcs_abc");
   });
 });

@@ -49,6 +49,37 @@
         </div>
         <p v-if="error" class="error" data-testid="error">{{ error }}</p>
       </div>
+
+      <!-- Staffing: hire agents (employees) + board approvals -->
+      <div v-if="selectedId" class="staffing" data-testid="staffing">
+        <h3>Agents</h3>
+        <form class="hire" data-testid="hire-form" @submit.prevent="onHireAgent">
+          <input v-model="newAgentName" data-testid="agent-name" placeholder="Hire an agent (name)" />
+          <button data-testid="hire-agent" type="submit">Hire</button>
+        </form>
+        <ul>
+          <li v-for="a in agents" :key="a.id" class="agent" :data-id="a.id">
+            {{ a.name }} — <span class="agent-status" data-testid="agent-status">{{ a.status }}</span>
+          </li>
+        </ul>
+
+        <h3>Approvals</h3>
+        <ul>
+          <li
+            v-for="ap in approvals.filter((x) => x.status === 'pending')"
+            :key="ap.id"
+            class="approval"
+            :data-id="ap.id"
+          >
+            {{ ap.type }}
+            <button data-testid="approve" @click="onDecide(ap.id, true)">Approve</button>
+            <button data-testid="reject" @click="onDecide(ap.id, false)">Reject</button>
+          </li>
+          <li v-if="!approvals.some((x) => x.status === 'pending')" class="no-approvals" data-testid="no-approvals">
+            No pending approvals
+          </li>
+        </ul>
+      </div>
     </div>
   </section>
 </template>
@@ -61,8 +92,14 @@ import {
   createCompany,
   listCompanies,
   runJob,
+  hireAgent,
+  listAgents,
+  listApprovals,
+  decideApproval,
   type Company,
   type JobResult,
+  type Agent,
+  type Approval,
 } from "../composables/usePaperclipSession";
 
 // The HTTP boundary is injected so the component is testable with a mock fetcher.
@@ -79,6 +116,10 @@ const selectedId = ref<string | null>(null);
 const prompt = ref("");
 const running = ref(false);
 const lastResult = ref<JobResult | null>(null);
+
+const agents = ref<Agent[]>([]);
+const approvals = ref<Approval[]>([]);
+const newAgentName = ref("");
 
 async function onLogin() {
   error.value = null;
@@ -119,6 +160,36 @@ async function onCreateCompany() {
 function selectCompany(id: string) {
   selectedId.value = id;
   lastResult.value = null;
+  void refreshHiring();
+}
+
+async function refreshHiring() {
+  if (!session.value || !selectedId.value) return;
+  agents.value = await listAgents(props.fetcher, session.value, selectedId.value);
+  approvals.value = await listApprovals(props.fetcher, session.value, selectedId.value);
+}
+
+async function onHireAgent() {
+  if (!session.value || !selectedId.value || !newAgentName.value) return;
+  error.value = null;
+  try {
+    await hireAgent(props.fetcher, session.value, selectedId.value, newAgentName.value);
+    newAgentName.value = "";
+    await refreshHiring();
+  } catch (e) {
+    error.value = "Could not hire agent";
+  }
+}
+
+async function onDecide(approvalId: string, approve: boolean) {
+  if (!session.value) return;
+  error.value = null;
+  try {
+    await decideApproval(props.fetcher, session.value, approvalId, approve);
+    await refreshHiring();
+  } catch (e) {
+    error.value = "Decision failed (board approval required)";
+  }
 }
 
 async function onRunJob() {

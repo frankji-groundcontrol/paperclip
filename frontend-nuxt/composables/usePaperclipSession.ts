@@ -72,3 +72,54 @@ export async function listJobs(fetcher: Fetcher, session: string, companyId: str
   const data = await fetcher(`/api/paperclip/companies/${companyId}/jobs`, { headers: auth(session) });
   return (Array.isArray(data) ? data : (data as { jobs?: Job[] }).jobs ?? []) as Job[];
 }
+
+// --- Hiring: agents (employees) hired via approval-gated governance ---
+export type Agent = { id: string; name: string; role: string; status: string };
+export type Approval = { id: string; type: string; status: string; subject_agent_id?: string | null };
+export type HireResult = { agentId: string; status: string; approvalId?: string | null };
+
+/** Hire an agent into a company (`POST …/agents`). Starts in `pending_approval` when the
+ *  company requires board approval. */
+export async function hireAgent(
+  fetcher: Fetcher,
+  session: string,
+  companyId: string,
+  name: string,
+  role?: string,
+  model?: string,
+): Promise<HireResult> {
+  const body: Record<string, unknown> = { name };
+  if (role) body.role = role;
+  if (model) body.model = model;
+  return (await fetcher(`/api/paperclip/companies/${companyId}/agents`, {
+    method: "POST",
+    body,
+    headers: auth(session),
+  })) as HireResult;
+}
+
+/** List a company's agents (`GET …/agents`). */
+export async function listAgents(fetcher: Fetcher, session: string, companyId: string): Promise<Agent[]> {
+  const data = await fetcher(`/api/paperclip/companies/${companyId}/agents`, { headers: auth(session) });
+  return (Array.isArray(data) ? data : (data as { agents?: Agent[] }).agents ?? []) as Agent[];
+}
+
+/** List a company's approvals (`GET …/approvals`). */
+export async function listApprovals(fetcher: Fetcher, session: string, companyId: string): Promise<Approval[]> {
+  const data = await fetcher(`/api/paperclip/companies/${companyId}/approvals`, { headers: auth(session) });
+  return (Array.isArray(data) ? data : (data as { approvals?: Approval[] }).approvals ?? []) as Approval[];
+}
+
+/** Board decision on an approval (`POST /api/paperclip/approvals/:id/decide`). */
+export async function decideApproval(
+  fetcher: Fetcher,
+  session: string,
+  approvalId: string,
+  approve: boolean,
+): Promise<{ status: string }> {
+  return (await fetcher(`/api/paperclip/approvals/${approvalId}/decide`, {
+    method: "POST",
+    body: { approve },
+    headers: auth(session),
+  })) as { status: string };
+}
