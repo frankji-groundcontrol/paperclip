@@ -9,6 +9,7 @@ pub mod approvals;
 pub mod auth;
 pub mod board_keys;
 pub mod budgets;
+pub mod cli_auth;
 pub mod cloud_upstreams;
 pub mod companies;
 pub mod company_skills;
@@ -21,8 +22,8 @@ pub mod inbox;
 pub mod instance_settings;
 pub mod invites;
 pub mod issues;
-pub mod join_requests;
 pub mod jobs;
+pub mod join_requests;
 pub mod llm;
 pub mod llms;
 pub mod mcp;
@@ -47,6 +48,7 @@ use approvals::{create_approval, delete_approval, list_approvals, update_approva
 use auth::{whoami, AgentKeyStore};
 use board_keys::{create_board_api_key, delete_board_api_key, list_board_api_keys, BoardKeyRepo};
 use budgets::{get_budget, record_budget_spend, set_budget_limit, BudgetRepo};
+use cli_auth::CliAuthService;
 use cloud_upstreams::{
     delete_cloud_upstream, list_cloud_upstreams, register_cloud_upstream, CloudUpstreamRepo,
 };
@@ -70,11 +72,11 @@ use instance_settings::{
 };
 use invites::{create_invite, list_invites, revoke_invite, InviteRepo};
 use issues::{create_issue, delete_issue, list_issues, update_issue, IssueRepo};
+use jobs::JobService;
 use join_requests::{
     approve_join_request, create_join_request, list_join_requests, reject_join_request,
     JoinRequestRepo,
 };
-use jobs::JobService;
 use llm::{DisabledLlmClient, OpenAiResponsesClient};
 use llms::{agent_configuration_index, agent_icons};
 use mcp::list_mcp_tools;
@@ -95,7 +97,7 @@ use supabase::{
     broker::{AuthBroker, InMemorySessionStore},
     data::{DataGateway, DisabledDataGateway},
     gateway::{HttpSupabaseGateway, SupabaseConfig},
-    routes::{auth_routes, paperclip_routes},
+    routes::{auth_routes, cli_auth_routes, paperclip_routes},
 };
 use teams_catalog::{install_catalog_team, list_catalog, list_installed_teams, TeamsCatalogRepo};
 use user_profiles::get_user_profile;
@@ -140,6 +142,7 @@ pub struct Repositories {
     pub agent_keys: AgentKeyStore,
     pub supabase_auth: AuthBroker,
     pub jobs: JobService,
+    pub cli_auth: CliAuthService,
 }
 
 impl FromRef<Repositories> for CompanyRepo {
@@ -334,11 +337,18 @@ impl FromRef<Repositories> for JobService {
     }
 }
 
+impl FromRef<Repositories> for CliAuthService {
+    fn from_ref(repos: &Repositories) -> Self {
+        repos.cli_auth.clone()
+    }
+}
+
 /// Builds the router over a caller-supplied set of repositories.
 pub fn app_with(repos: Repositories) -> Router {
     Router::new()
         .merge(auth_routes())
         .merge(paperclip_routes())
+        .merge(cli_auth_routes())
         .route("/api/health", get(health))
         .route("/api/whoami", get(whoami))
         .route("/api/mcp/tools", get(list_mcp_tools))
@@ -630,32 +640,30 @@ pub fn repositories_from_env() -> Repositories {
     let data: Arc<dyn DataGateway> = match SupabaseConfig::from_env() {
         Ok(config) => {
             let gateway = Arc::new(HttpSupabaseGateway::new(config.url, config.anon_key));
-            repos.supabase_auth = AuthBroker::new(
-                gateway.clone(),
-                Arc::new(InMemorySessionStore::default()),
-            );
+            repos.supabase_auth =
+                AuthBroker::new(gateway.clone(), Arc::new(InMemorySessionStore::default()));
             gateway
         }
         Err(_) => Arc::new(DisabledDataGateway),
     };
 
-    let llm: Arc<dyn llm::LlmClient> = if std::env::var("OPENAI_API_KEY").is_ok()
-        && std::env::var("OPENAI_BASE_URL").is_ok()
-    {
-        match OpenAiResponsesClient::from_env() {
-            Ok(client) => Arc::new(client),
-            Err(err) => {
-                eprintln!("OpenAI client disabled: {err}");
-                Arc::new(DisabledLlmClient)
+    let llm: Arc<dyn llm::LlmClient> =
+        if std::env::var("OPENAI_API_KEY").is_ok() && std::env::var("OPENAI_BASE_URL").is_ok() {
+            match OpenAiResponsesClient::from_env() {
+                Ok(client) => Arc::new(client),
+                Err(err) => {
+                    eprintln!("OpenAI client disabled: {err}");
+                    Arc::new(DisabledLlmClient)
+                }
             }
-        }
-    } else {
-        Arc::new(DisabledLlmClient)
-    };
+        } else {
+            Arc::new(DisabledLlmClient)
+        };
 
     // Share the SAME AuthBroker (and its session store) so sessions minted at
     // /api/auth/login are visible to the JobService session data path.
-    repos.jobs = JobService::new(data, llm, repos.supabase_auth.clone());
+    repos.jobs = JobService::new(data.clone(), llm, repos.supabase_auth.clone());
+    repos.cli_auth = CliAuthService::new(data, repos.supabase_auth.clone());
     repos
 }
 

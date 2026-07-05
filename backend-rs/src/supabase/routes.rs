@@ -8,7 +8,10 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
-use crate::jobs::JobService;
+use crate::{
+    cli_auth::{CliAuthService, StartDeviceLogin},
+    jobs::JobService,
+};
 
 use super::broker::{AuthBroker, Principal};
 
@@ -44,6 +47,18 @@ where
             "/api/paperclip/companies/:companyId/jobs",
             get(list_paperclip_jobs::<S>).post(run_paperclip_job::<S>),
         )
+}
+
+pub fn cli_auth_routes<S>() -> Router<S>
+where
+    AuthBroker: FromRef<S>,
+    CliAuthService: FromRef<S>,
+    S: Clone + Send + Sync + 'static,
+{
+    Router::new()
+        .route("/api/cli/start", post(start_cli_device_login::<S>))
+        .route("/api/cli/poll", post(poll_cli_device_login::<S>))
+        .route("/api/cli/approve", post(approve_cli_device_login::<S>))
 }
 
 async fn register<S>(
@@ -161,6 +176,31 @@ struct RunPaperclipJob {
     client_token: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StartCliDeviceLogin {
+    secret_hash: String,
+    user_code_hash: String,
+    pending_key_prefix: String,
+    pending_key_hash: String,
+    pending_key_name: String,
+    device_name: Option<String>,
+    requested_access: Option<String>,
+    team_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PollCliDeviceLogin {
+    secret_hash: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApproveCliDeviceLogin {
+    user_code_hash: String,
+}
+
 async fn create_paperclip_company<S>(
     State(jobs): State<JobService>,
     headers: HeaderMap,
@@ -176,6 +216,67 @@ where
         .await
         .map_err(map_job_error)?;
     Ok(Json(json!({ "companyId": company_id })))
+}
+
+async fn start_cli_device_login<S>(
+    State(cli_auth): State<CliAuthService>,
+    Json(payload): Json<StartCliDeviceLogin>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where
+    CliAuthService: FromRef<S>,
+    S: Send + Sync,
+{
+    cli_auth
+        .start(StartDeviceLogin {
+            secret_hash: payload.secret_hash,
+            user_code_hash: payload.user_code_hash,
+            pending_key_prefix: payload.pending_key_prefix,
+            pending_key_hash: payload.pending_key_hash,
+            pending_key_name: payload.pending_key_name,
+            device_name: payload.device_name,
+            requested_access: payload.requested_access,
+            team_id: payload.team_id,
+        })
+        .await
+        .map_err(map_job_error)?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn poll_cli_device_login<S>(
+    State(cli_auth): State<CliAuthService>,
+    Json(payload): Json<PollCliDeviceLogin>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where
+    CliAuthService: FromRef<S>,
+    S: Send + Sync,
+{
+    let row = cli_auth
+        .poll(&payload.secret_hash)
+        .await
+        .map_err(map_job_error)?;
+    Ok(Json(row))
+}
+
+async fn approve_cli_device_login<S>(
+    State(cli_auth): State<CliAuthService>,
+    headers: HeaderMap,
+    principal: Principal,
+    Json(payload): Json<ApproveCliDeviceLogin>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where
+    AuthBroker: FromRef<S>,
+    CliAuthService: FromRef<S>,
+    S: Send + Sync,
+{
+    if !matches!(principal, Principal::User { .. }) {
+        return Err(unauthorized());
+    }
+    let bearer = bearer_token_from_headers(&headers)?;
+    cli_auth
+        .approve(bearer, &payload.user_code_hash)
+        .await
+        .map_err(map_job_error)?;
+    Ok(Json(json!({ "ok": true })))
 }
 
 async fn list_paperclip_companies<S>(
@@ -240,6 +341,12 @@ fn map_job_error(err: anyhow::Error) -> (StatusCode, Json<Value>) {
             Json(json!({ "error": "api_key_required" })),
         );
     }
+    if message.contains("session required") {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "unauthorized" })),
+        );
+    }
     if message.contains("28000") || message.contains("unknown session") {
         return (
             StatusCode::UNAUTHORIZED,
@@ -247,10 +354,7 @@ fn map_job_error(err: anyhow::Error) -> (StatusCode, Json<Value>) {
         );
     }
     if message.contains("42501") {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(json!({ "error": "forbidden" })),
-        );
+        return (StatusCode::FORBIDDEN, Json(json!({ "error": "forbidden" })));
     }
     (
         StatusCode::BAD_GATEWAY,

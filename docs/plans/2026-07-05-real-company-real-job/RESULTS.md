@@ -61,3 +61,13 @@ server-side** (leak check E12); api-key data path forge-proof (key-credential RP
   `nuxt build` compiles the page. The real browser→proxy→broker→Supabase/OpenAI wire was driven
   end-to-end (login → company → real OpenAI job `4`).
 - Backend tests **282/0/4**.
+
+## Agent onboarding: `paperclip login` device flow + agent-key scopes (codex TDD)
+- **Device-login** (`09-cli-device-login-spec.md`, codex TDD): `CliAuthService` (start/poll/approve) +
+  `POST /api/cli/{start,poll,approve}` (approve is session-authenticated) + the `paperclip login`
+  command (generates the key locally, sends only hashes, polls, saves on approval). **Proven real,
+  end-to-end**: `paperclip login` → a signed-in user approves the code via `/api/cli/approve` → the CLI
+  saves the key → that device-obtained key creates a real company. Backend tests **292/0/4**.
+- **Agent-key scopes** (migration `0012`): `fn_key_allows` gates the `*_with_key` RPCs on
+  `companies:write/read` + `jobs:write/read` (`*` = all); unscoped key = full access (backward compat).
+  Proven **6/6** (`run_scopes_acceptance.py`).
