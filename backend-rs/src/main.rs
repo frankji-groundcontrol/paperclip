@@ -1,7 +1,9 @@
-use paperclip_backend::app;
+use paperclip_backend::app_from_env;
 
-/// Composition root: binds a listener and serves the tested `app()` router.
-/// Behavior lives in `app()` (see src/lib.rs) and is covered by tests/.
+/// Composition root: binds a listener and serves `app_from_env()`, which wires the
+/// real Supabase (auth + data) and OpenAI gateways when SUPABASE_*/OPENAI_* env is
+/// present, and falls back to disabled/in-memory otherwise. Behavior lives in the
+/// library (see src/lib.rs) and is covered by tests/.
 #[tokio::main]
 async fn main() {
     let port: u16 = std::env::var("PORT")
@@ -13,5 +15,7 @@ async fn main() {
         .await
         .expect("failed to bind listener");
     println!("paperclip-backend listening on http://{addr}");
-    axum::serve(listener, app()).await.expect("server error");
+    axum::serve(listener, app_from_env())
+        .await
+        .expect("server error");
 }

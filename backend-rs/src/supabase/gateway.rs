@@ -90,8 +90,16 @@ impl HttpSupabaseGateway {
         format!("{}/auth/v1{}", self.url, path)
     }
 
-    fn rpc_url(&self, name: &str) -> String {
+    pub(crate) fn rpc_url(&self, name: &str) -> String {
         format!("{}/rest/v1/rpc/{}", self.url, name)
+    }
+
+    pub(crate) fn anon_key(&self) -> &str {
+        &self.anon_key
+    }
+
+    pub(crate) fn client(&self) -> &Client {
+        &self.client
     }
 
     async fn post_json(&self, url: String, body: Value) -> anyhow::Result<Value> {

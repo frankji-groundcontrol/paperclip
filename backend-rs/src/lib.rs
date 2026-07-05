@@ -1,5 +1,6 @@
 use axum::{extract::FromRef, routing::get, Json, Router};
 use serde_json::{json, Value};
+use std::sync::Arc;
 
 pub mod activity;
 pub mod adapters;
@@ -21,6 +22,8 @@ pub mod instance_settings;
 pub mod invites;
 pub mod issues;
 pub mod join_requests;
+pub mod jobs;
+pub mod llm;
 pub mod llms;
 pub mod mcp;
 pub mod memberships;
@@ -71,6 +74,8 @@ use join_requests::{
     approve_join_request, create_join_request, list_join_requests, reject_join_request,
     JoinRequestRepo,
 };
+use jobs::JobService;
+use llm::{DisabledLlmClient, OpenAiResponsesClient};
 use llms::{agent_configuration_index, agent_icons};
 use mcp::list_mcp_tools;
 use memberships::{get_memberships, put_agent_membership, put_project_membership, MembershipRepo};
@@ -86,7 +91,12 @@ use runs::{create_run, delete_run, list_runs, update_run, RunRepo};
 use secrets::{create_secret, delete_secret, list_secrets, SecretRepo};
 use sidebar::{get_project_order, put_project_order, SidebarRepo};
 use sidebar_badges::get_sidebar_badges;
-use supabase::{broker::AuthBroker, routes::auth_routes};
+use supabase::{
+    broker::{AuthBroker, InMemorySessionStore},
+    data::{DataGateway, DisabledDataGateway},
+    gateway::{HttpSupabaseGateway, SupabaseConfig},
+    routes::{auth_routes, paperclip_routes},
+};
 use teams_catalog::{install_catalog_team, list_catalog, list_installed_teams, TeamsCatalogRepo};
 use user_profiles::get_user_profile;
 use workspaces::{
@@ -129,6 +139,7 @@ pub struct Repositories {
     pub cloud_upstreams: CloudUpstreamRepo,
     pub agent_keys: AgentKeyStore,
     pub supabase_auth: AuthBroker,
+    pub jobs: JobService,
 }
 
 impl FromRef<Repositories> for CompanyRepo {
@@ -317,10 +328,17 @@ impl FromRef<Repositories> for AuthBroker {
     }
 }
 
+impl FromRef<Repositories> for JobService {
+    fn from_ref(repos: &Repositories) -> Self {
+        repos.jobs.clone()
+    }
+}
+
 /// Builds the router over a caller-supplied set of repositories.
 pub fn app_with(repos: Repositories) -> Router {
     Router::new()
         .merge(auth_routes())
+        .merge(paperclip_routes())
         .route("/api/health", get(health))
         .route("/api/whoami", get(whoami))
         .route("/api/mcp/tools", get(list_mcp_tools))
@@ -600,6 +618,43 @@ pub fn app_with_repos(companies: CompanyRepo, issues: IssueRepo) -> Router {
 /// Routes are added slice-by-slice as the Express `server/` surface is ported.
 pub fn app() -> Router {
     app_with(Repositories::default())
+}
+
+pub fn app_from_env() -> Router {
+    app_with(repositories_from_env())
+}
+
+pub fn repositories_from_env() -> Repositories {
+    let mut repos = Repositories::default();
+
+    let data: Arc<dyn DataGateway> = match SupabaseConfig::from_env() {
+        Ok(config) => {
+            let gateway = Arc::new(HttpSupabaseGateway::new(config.url, config.anon_key));
+            repos.supabase_auth = AuthBroker::new(
+                gateway.clone(),
+                Arc::new(InMemorySessionStore::default()),
+            );
+            gateway
+        }
+        Err(_) => Arc::new(DisabledDataGateway),
+    };
+
+    let llm: Arc<dyn llm::LlmClient> = if std::env::var("OPENAI_API_KEY").is_ok()
+        && std::env::var("OPENAI_BASE_URL").is_ok()
+    {
+        match OpenAiResponsesClient::from_env() {
+            Ok(client) => Arc::new(client),
+            Err(err) => {
+                eprintln!("OpenAI client disabled: {err}");
+                Arc::new(DisabledLlmClient)
+            }
+        }
+    } else {
+        Arc::new(DisabledLlmClient)
+    };
+
+    repos.jobs = JobService::new(data, llm);
+    repos
 }
 
 /// Server version, mirroring `server/src/version.ts` (`serverVersion`).

@@ -8,6 +8,8 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
+use crate::jobs::JobService;
+
 use super::broker::{AuthBroker, Principal};
 
 #[derive(Deserialize)]
@@ -26,6 +28,22 @@ where
         .route("/api/auth/login", post(login::<S>))
         .route("/api/auth/logout", post(logout::<S>))
         .route("/api/auth/session", get(session))
+}
+
+pub fn paperclip_routes<S>() -> Router<S>
+where
+    JobService: FromRef<S>,
+    S: Clone + Send + Sync + 'static,
+{
+    Router::new()
+        .route(
+            "/api/paperclip/companies",
+            get(list_paperclip_companies::<S>).post(create_paperclip_company::<S>),
+        )
+        .route(
+            "/api/paperclip/companies/:companyId/jobs",
+            get(list_paperclip_jobs::<S>).post(run_paperclip_job::<S>),
+        )
 }
 
 async fn register<S>(
@@ -128,6 +146,116 @@ fn bearer_token_from_headers(headers: &HeaderMap) -> Result<&str, (StatusCode, J
         .map(str::trim)
         .filter(|token| !token.is_empty())
         .ok_or_else(unauthorized)
+}
+
+#[derive(Deserialize)]
+struct CreatePaperclipCompany {
+    name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RunPaperclipJob {
+    prompt: String,
+    model: Option<String>,
+    client_token: Option<String>,
+}
+
+async fn create_paperclip_company<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    Json(payload): Json<CreatePaperclipCompany>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where
+    JobService: FromRef<S>,
+    S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let company_id = jobs
+        .create_company(bearer, &payload.name)
+        .await
+        .map_err(map_job_error)?;
+    Ok(Json(json!({ "companyId": company_id })))
+}
+
+async fn list_paperclip_companies<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where
+    JobService: FromRef<S>,
+    S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let companies = jobs.list_companies(bearer).await.map_err(map_job_error)?;
+    Ok(Json(json!({ "companies": companies })))
+}
+
+async fn run_paperclip_job<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+    Json(payload): Json<RunPaperclipJob>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where
+    JobService: FromRef<S>,
+    S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let job = jobs
+        .run_job(
+            bearer,
+            &company_id,
+            &payload.prompt,
+            payload.model.as_deref(),
+            payload.client_token.as_deref(),
+        )
+        .await
+        .map_err(map_job_error)?;
+    Ok(Json(job))
+}
+
+async fn list_paperclip_jobs<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where
+    JobService: FromRef<S>,
+    S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let jobs = jobs
+        .list_jobs(bearer, &company_id)
+        .await
+        .map_err(map_job_error)?;
+    Ok(Json(json!({ "jobs": jobs })))
+}
+
+fn map_job_error(err: anyhow::Error) -> (StatusCode, Json<Value>) {
+    let message = err.to_string();
+    if message.contains("api key required") {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "api_key_required" })),
+        );
+    }
+    if message.contains("28000") {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "unauthorized" })),
+        );
+    }
+    if message.contains("42501") {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "forbidden" })),
+        );
+    }
+    (
+        StatusCode::BAD_GATEWAY,
+        Json(json!({ "error": "paperclip_backend_unavailable" })),
+    )
 }
 
 fn principal_json(principal: Principal) -> Value {
