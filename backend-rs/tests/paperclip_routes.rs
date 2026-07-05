@@ -9,6 +9,7 @@ use axum::{
     http::{header, Request, StatusCode},
 };
 use paperclip_backend::{
+    app_from_env, app_with,
     jobs::JobService,
     llm::{LlmAnswer, LlmClient, LlmUsage},
     supabase::{
@@ -16,7 +17,7 @@ use paperclip_backend::{
         data::{Auth, DataGateway},
         gateway::{GoTrueSession, ResolvedKey, SignUpOutcome, SupabaseGateway},
     },
-    app_from_env, app_with, Repositories,
+    Repositories,
 };
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -56,6 +57,14 @@ impl DataGateway for FakeData {
             "create_job_with_key" => json!("job-1"),
             "complete_job_with_key" => json!(true),
             "list_jobs_with_key" => json!([{ "id": "job-1", "status": "succeeded" }]),
+            "hire_agent_with_key" => json!({
+                "agentId": "agent-1",
+                "status": "pending_approval",
+                "approvalId": "approval-1"
+            }),
+            "list_agents_with_key" => json!([{ "id": "agent-1", "name": "Ada" }]),
+            "list_approvals_with_key" => json!([{ "id": "approval-1", "status": "pending" }]),
+            "decide_approval_with_key" => json!({ "status": "approved" }),
             other => anyhow::bail!("unexpected rpc {other}"),
         })
     }
@@ -64,6 +73,10 @@ impl DataGateway for FakeData {
         self.calls.lock().unwrap().push(format!("GET {path}"));
         Ok(if path.starts_with("my_companies") {
             json!([{ "id": "company-1" }])
+        } else if path.starts_with("my_agents") {
+            json!([{ "id": "agent-1", "name": "Ada" }])
+        } else if path.starts_with("my_approvals") {
+            json!([{ "id": "approval-1", "status": "pending" }])
         } else {
             json!([{ "id": "job-1" }])
         })
@@ -141,13 +154,15 @@ async fn paperclip_routes_are_mounted_without_colliding_with_in_memory_companies
         Some(json!({ "name": "Acme" })),
     )
     .await;
-    let (legacy_status, legacy_body) =
-        send(&app, "GET", "/api/companies", None, None).await;
+    let (legacy_status, legacy_body) = send(&app, "GET", "/api/companies", None, None).await;
 
     assert_eq!(paperclip_status, StatusCode::OK);
     assert_eq!(paperclip_body, json!({ "companyId": "company-1" }));
     assert_eq!(legacy_status, StatusCode::OK);
-    assert!(legacy_body.as_array().is_some(), "legacy route returns array");
+    assert!(
+        legacy_body.as_array().is_some(),
+        "legacy route returns array"
+    );
 }
 
 #[tokio::test]
@@ -194,6 +209,74 @@ async fn paperclip_job_routes_delegate_to_job_service_and_do_not_leak_internals(
 }
 
 #[tokio::test]
+async fn paperclip_hiring_routes_delegate_and_do_not_leak_internals() {
+    let (app, data) = route_app_with_data();
+
+    let (hire_status, hire_body) = send(
+        &app,
+        "POST",
+        "/api/paperclip/companies/company-1/agents",
+        Some(API_KEY),
+        Some(json!({
+            "name": "Ada Lovelace",
+            "role": "engineer",
+            "model": "gpt-5.4-mini",
+            "title": "CTO"
+        })),
+    )
+    .await;
+    let (agents_status, agents_body) = send(
+        &app,
+        "GET",
+        "/api/paperclip/companies/company-1/agents",
+        Some(API_KEY),
+        None,
+    )
+    .await;
+    let (approvals_status, approvals_body) = send(
+        &app,
+        "GET",
+        "/api/paperclip/companies/company-1/approvals",
+        Some(API_KEY),
+        None,
+    )
+    .await;
+    let (decide_status, decide_body) = send(
+        &app,
+        "POST",
+        "/api/paperclip/approvals/approval-1/decide",
+        Some(API_KEY),
+        Some(json!({ "approve": true })),
+    )
+    .await;
+
+    assert_eq!(hire_status, StatusCode::OK);
+    assert_eq!(hire_body["agentId"], "agent-1");
+    assert_eq!(hire_body["status"], "pending_approval");
+    assert_eq!(hire_body["approvalId"], "approval-1");
+    assert_eq!(agents_status, StatusCode::OK);
+    assert_eq!(agents_body["agents"][0]["id"], "agent-1");
+    assert_eq!(approvals_status, StatusCode::OK);
+    assert_eq!(approvals_body["approvals"][0]["id"], "approval-1");
+    assert_eq!(decide_status, StatusCode::OK);
+    assert_eq!(decide_body, json!({ "status": "approved" }));
+
+    assert_eq!(
+        data.calls.lock().unwrap().clone(),
+        vec![
+            "hire_agent_with_key".to_string(),
+            "list_agents_with_key".to_string(),
+            "list_approvals_with_key".to_string(),
+            "decide_approval_with_key".to_string(),
+        ]
+    );
+
+    for body in [hire_body, agents_body, approvals_body, decide_body] {
+        assert_no_secret_leak(&body);
+    }
+}
+
+#[tokio::test]
 async fn paperclip_routes_reject_non_api_key_bearer_with_generic_401() {
     let app = route_app();
 
@@ -220,15 +303,21 @@ async fn app_from_env_builds_router_without_contacting_network() {
 }
 
 fn route_app() -> axum::Router {
+    route_app_with_data().0
+}
+
+fn route_app_with_data() -> (axum::Router, FakeData) {
     let auth = AuthBroker::new(
         Arc::new(FakeGateway::with_key("pc_routes")),
         Arc::new(paperclip_backend::supabase::broker::InMemorySessionStore::default()),
     );
-    app_with(Repositories {
-        jobs: JobService::new(Arc::new(FakeData::default()), Arc::new(FakeLlm), auth.clone()),
+    let data = FakeData::default();
+    let app = app_with(Repositories {
+        jobs: JobService::new(Arc::new(data.clone()), Arc::new(FakeLlm), auth.clone()),
         supabase_auth: auth,
         ..Default::default()
-    })
+    });
+    (app, data)
 }
 
 async fn send(
@@ -260,3 +349,12 @@ async fn send(
     (status, body)
 }
 
+fn assert_no_secret_leak(body: &Value) {
+    let encoded = body.to_string();
+    assert!(!encoded.contains("supabase"));
+    assert!(!encoded.contains("openai"));
+    assert!(!encoded.contains("://"));
+    assert!(!encoded.contains("Bearer"));
+    assert!(!encoded.contains("sk-"));
+    assert!(!encoded.contains("key_hash"));
+}

@@ -274,7 +274,9 @@ fn usage() -> ! {
         "usage:\n  paperclip login [--name <device>] [--team <TEAM_ID>] [--server URL]\n  \
 paperclip config set-key <API_KEY>\n  paperclip company create \"<name>\"\n  \
 paperclip company list\n  paperclip job run --company <ID> \"<prompt>\" [--model <M>]\n  \
-paperclip job list --company <ID>"
+paperclip job list --company <ID>\n  paperclip agent hire \"<name>\" --company <ID> [--role <R>] [--model <M>]\n  \
+paperclip agent list --company <ID>\n  paperclip approval list --company <ID>\n  \
+paperclip approval approve <APPROVAL_ID>\n  paperclip approval reject <APPROVAL_ID>"
     );
     std::process::exit(2);
 }
@@ -283,6 +285,87 @@ fn arg_value(args: &[String], flag: &str) -> Option<String> {
     args.iter()
         .position(|a| a == flag)
         .and_then(|i| args.get(i + 1).cloned())
+}
+
+#[derive(Debug)]
+struct AgentHireCommand {
+    name: String,
+    company: String,
+    role: Option<String>,
+    model: Option<String>,
+}
+
+fn parse_agent_hire_args(args: &[String]) -> anyhow::Result<AgentHireCommand> {
+    let mut company: Option<String> = None;
+    let mut role: Option<String> = None;
+    let mut model: Option<String> = None;
+    let mut positionals: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--company" => {
+                let value = args
+                    .get(i + 1)
+                    .filter(|value| !value.starts_with("--"))
+                    .ok_or_else(|| anyhow::anyhow!("missing --company <ID>"))?;
+                company = Some(value.clone());
+                i += 2;
+            }
+            "--role" => {
+                let value = args
+                    .get(i + 1)
+                    .filter(|value| !value.starts_with("--"))
+                    .ok_or_else(|| anyhow::anyhow!("missing --role <ROLE>"))?;
+                role = Some(value.clone());
+                i += 2;
+            }
+            "--model" => {
+                let value = args
+                    .get(i + 1)
+                    .filter(|value| !value.starts_with("--"))
+                    .ok_or_else(|| anyhow::anyhow!("missing --model <MODEL>"))?;
+                model = Some(value.clone());
+                i += 2;
+            }
+            "--" => {
+                positionals.extend(args[i + 1..].iter().cloned());
+                break;
+            }
+            flag if flag.starts_with("--") => anyhow::bail!("unknown agent hire option {flag}"),
+            _ => {
+                positionals.push(args[i].clone());
+                i += 1;
+            }
+        }
+    }
+    let company = company.ok_or_else(|| anyhow::anyhow!("missing --company <ID>"))?;
+    if positionals.len() != 1 {
+        anyhow::bail!(
+            "expected exactly one agent name argument, got {}",
+            positionals.len()
+        );
+    }
+    Ok(AgentHireCommand {
+        name: positionals.remove(0),
+        company,
+        role,
+        model,
+    })
+}
+
+fn agent_hire_body(command: &AgentHireCommand) -> Value {
+    let mut body = json!({ "name": command.name });
+    if let Some(role) = &command.role {
+        body["role"] = json!(role);
+    }
+    if let Some(model) = &command.model {
+        body["model"] = json!(model);
+    }
+    body
+}
+
+fn approval_decision_body(approve: bool) -> Value {
+    json!({ "approve": approve })
 }
 
 #[tokio::main]
@@ -404,6 +487,63 @@ async fn run(args: &[String]) -> anyhow::Result<()> {
             }
             _ => usage(),
         },
+        Some("agent") => match args.get(1).map(String::as_str) {
+            Some("hire") => {
+                let command = parse_agent_hire_args(&args[2..])?;
+                let v = call(
+                    "POST",
+                    &format!("/api/paperclip/companies/{}/agents", command.company),
+                    Some(agent_hire_body(&command)),
+                )
+                .await?;
+                let agent_id = v.get("agentId").and_then(Value::as_str).unwrap_or("");
+                let status = v.get("status").and_then(Value::as_str).unwrap_or("");
+                if let Some(approval_id) = v.get("approvalId").and_then(Value::as_str) {
+                    println!("{agent_id} {status} {approval_id}");
+                } else {
+                    println!("{agent_id} {status}");
+                }
+            }
+            Some("list") => {
+                let company = arg_value(args, "--company")
+                    .ok_or_else(|| anyhow::anyhow!("missing --company <ID>"))?;
+                let v = call(
+                    "GET",
+                    &format!("/api/paperclip/companies/{company}/agents"),
+                    None,
+                )
+                .await?;
+                println!("{}", serde_json::to_string_pretty(&v)?);
+            }
+            _ => usage(),
+        },
+        Some("approval") => match args.get(1).map(String::as_str) {
+            Some("list") => {
+                let company = arg_value(args, "--company")
+                    .ok_or_else(|| anyhow::anyhow!("missing --company <ID>"))?;
+                let v = call(
+                    "GET",
+                    &format!("/api/paperclip/companies/{company}/approvals"),
+                    None,
+                )
+                .await?;
+                println!("{}", serde_json::to_string_pretty(&v)?);
+            }
+            Some("approve") | Some("reject") => {
+                let approval_id = args
+                    .get(2)
+                    .ok_or_else(|| anyhow::anyhow!("missing approval ID"))?;
+                let approve = args.get(1).map(String::as_str) == Some("approve");
+                let v = call(
+                    "POST",
+                    &format!("/api/paperclip/approvals/{approval_id}/decide"),
+                    Some(approval_decision_body(approve)),
+                )
+                .await?;
+                println!("{}", v.get("status").and_then(Value::as_str).unwrap_or(""));
+            }
+            _ => usage(),
+        },
         _ => usage(),
     }
     Ok(())
@@ -474,5 +614,53 @@ mod tests {
         assert_eq!(material.user_code, "A1B2C3D4");
         assert_eq!(material.prefix, "pc_12345678");
         assert_eq!(material.full_key, "paperclip_pc_12345678_key-secret");
+    }
+
+    #[test]
+    fn parse_agent_hire_args_reads_name_company_role_and_model() {
+        let args = vec![
+            "Ada Lovelace".to_string(),
+            "--company".to_string(),
+            "company-1".to_string(),
+            "--role".to_string(),
+            "engineer".to_string(),
+            "--model".to_string(),
+            "gpt-5.4-mini".to_string(),
+        ];
+
+        let command = parse_agent_hire_args(&args).unwrap();
+
+        assert_eq!(command.name, "Ada Lovelace");
+        assert_eq!(command.company, "company-1");
+        assert_eq!(command.role.as_deref(), Some("engineer"));
+        assert_eq!(command.model.as_deref(), Some("gpt-5.4-mini"));
+        assert_eq!(
+            agent_hire_body(&command),
+            json!({
+                "name": "Ada Lovelace",
+                "role": "engineer",
+                "model": "gpt-5.4-mini"
+            })
+        );
+    }
+
+    #[test]
+    fn parse_agent_hire_args_requires_exactly_one_name() {
+        let args = vec![
+            "Ada".to_string(),
+            "Grace".to_string(),
+            "--company".to_string(),
+            "company-1".to_string(),
+        ];
+
+        let err = parse_agent_hire_args(&args).unwrap_err();
+
+        assert!(err.to_string().contains("exactly one agent name"));
+    }
+
+    #[test]
+    fn approval_decision_body_uses_boolean() {
+        assert_eq!(approval_decision_body(true), json!({ "approve": true }));
+        assert_eq!(approval_decision_body(false), json!({ "approve": false }));
     }
 }

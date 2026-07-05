@@ -47,6 +47,18 @@ where
             "/api/paperclip/companies/:companyId/jobs",
             get(list_paperclip_jobs::<S>).post(run_paperclip_job::<S>),
         )
+        .route(
+            "/api/paperclip/companies/:companyId/agents",
+            get(list_paperclip_agents::<S>).post(hire_paperclip_agent::<S>),
+        )
+        .route(
+            "/api/paperclip/companies/:companyId/approvals",
+            get(list_paperclip_approvals::<S>),
+        )
+        .route(
+            "/api/paperclip/approvals/:approvalId/decide",
+            post(decide_paperclip_approval::<S>),
+        )
 }
 
 pub fn cli_auth_routes<S>() -> Router<S>
@@ -174,6 +186,21 @@ struct RunPaperclipJob {
     prompt: String,
     model: Option<String>,
     client_token: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HirePaperclipAgent {
+    name: String,
+    role: Option<String>,
+    model: Option<String>,
+    title: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DecidePaperclipApproval {
+    approve: bool,
 }
 
 #[derive(Deserialize)]
@@ -331,6 +358,83 @@ where
         .await
         .map_err(map_job_error)?;
     Ok(Json(json!({ "jobs": jobs })))
+}
+
+async fn hire_paperclip_agent<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+    Json(payload): Json<HirePaperclipAgent>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where
+    JobService: FromRef<S>,
+    S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let agent = jobs
+        .hire_agent(
+            bearer,
+            &company_id,
+            &payload.name,
+            payload.role.as_deref(),
+            payload.model.as_deref(),
+            payload.title.as_deref(),
+        )
+        .await
+        .map_err(map_job_error)?;
+    Ok(Json(agent))
+}
+
+async fn list_paperclip_agents<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where
+    JobService: FromRef<S>,
+    S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let agents = jobs
+        .list_agents(bearer, &company_id)
+        .await
+        .map_err(map_job_error)?;
+    Ok(Json(json!({ "agents": agents })))
+}
+
+async fn list_paperclip_approvals<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where
+    JobService: FromRef<S>,
+    S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let approvals = jobs
+        .list_approvals(bearer, &company_id)
+        .await
+        .map_err(map_job_error)?;
+    Ok(Json(json!({ "approvals": approvals })))
+}
+
+async fn decide_paperclip_approval<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(approval_id): axum::extract::Path<String>,
+    Json(payload): Json<DecidePaperclipApproval>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where
+    JobService: FromRef<S>,
+    S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let decision = jobs
+        .decide_approval(bearer, &approval_id, payload.approve)
+        .await
+        .map_err(map_job_error)?;
+    Ok(Json(decision))
 }
 
 fn map_job_error(err: anyhow::Error) -> (StatusCode, Json<Value>) {

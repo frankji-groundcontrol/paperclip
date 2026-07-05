@@ -16,7 +16,9 @@ fn server() -> String {
     std::env::var("PAPERCLIP_SERVER").unwrap_or_else(|_| "http://127.0.0.1:8787".to_string())
 }
 fn api_key() -> Option<String> {
-    std::env::var("PAPERCLIP_API_KEY").ok().filter(|k| !k.trim().is_empty())
+    std::env::var("PAPERCLIP_API_KEY")
+        .ok()
+        .filter(|k| !k.trim().is_empty())
 }
 
 fn tools() -> Value {
@@ -34,7 +36,24 @@ fn tools() -> Value {
               "required": ["companyId", "prompt"] } },
         { "name": "paperclip_list_jobs",
           "description": "List jobs for a company. Returns { jobs }.",
-          "inputSchema": { "type": "object", "properties": { "companyId": { "type": "string" } }, "required": ["companyId"] } }
+          "inputSchema": { "type": "object", "properties": { "companyId": { "type": "string" } }, "required": ["companyId"] } },
+        { "name": "paperclip_hire_agent",
+          "description": "Hire an agent into a company. Returns { agentId, status, approvalId? }.",
+          "inputSchema": { "type": "object", "properties": {
+              "companyId": { "type": "string" }, "name": { "type": "string" },
+              "role": { "type": "string" }, "model": { "type": "string" } },
+              "required": ["companyId", "name"] } },
+        { "name": "paperclip_list_agents",
+          "description": "List agents for a company. Returns { agents }.",
+          "inputSchema": { "type": "object", "properties": { "companyId": { "type": "string" } }, "required": ["companyId"] } },
+        { "name": "paperclip_list_approvals",
+          "description": "List approvals for a company. Returns { approvals }.",
+          "inputSchema": { "type": "object", "properties": { "companyId": { "type": "string" } }, "required": ["companyId"] } },
+        { "name": "paperclip_decide_approval",
+          "description": "Approve or reject an approval request. Returns { status }.",
+          "inputSchema": { "type": "object", "properties": {
+              "approvalId": { "type": "string" }, "approve": { "type": "boolean" } },
+              "required": ["approvalId", "approve"] } }
     ])
 }
 
@@ -42,7 +61,12 @@ async fn http(method: &str, path: &str, body: Option<Value>) -> anyhow::Result<V
     let key = api_key().ok_or_else(|| anyhow::anyhow!("PAPERCLIP_API_KEY is not set"))?;
     let client = reqwest::Client::new();
     let url = format!("{}{}", server(), path);
-    let mut req = if method == "POST" { client.post(url) } else { client.get(url) }.bearer_auth(key);
+    let mut req = if method == "POST" {
+        client.post(url)
+    } else {
+        client.get(url)
+    }
+    .bearer_auth(key);
     if let Some(body) = body {
         req = req.json(&body);
     }
@@ -55,27 +79,86 @@ async fn http(method: &str, path: &str, body: Option<Value>) -> anyhow::Result<V
     Ok(value)
 }
 
-async fn call_tool(name: &str, args: &Value) -> anyhow::Result<Value> {
+fn tool_http_request(
+    name: &str,
+    args: &Value,
+) -> anyhow::Result<(&'static str, String, Option<Value>)> {
     match name {
         "paperclip_create_company" => {
             let n = args.get("name").cloned().unwrap_or(Value::Null);
-            http("POST", "/api/paperclip/companies", Some(json!({ "name": n }))).await
+            Ok((
+                "POST",
+                "/api/paperclip/companies".to_string(),
+                Some(json!({ "name": n })),
+            ))
         }
-        "paperclip_list_companies" => http("GET", "/api/paperclip/companies", None).await,
+        "paperclip_list_companies" => Ok(("GET", "/api/paperclip/companies".to_string(), None)),
         "paperclip_run_job" => {
             let company = args.get("companyId").and_then(Value::as_str).unwrap_or("");
             let mut body = json!({ "prompt": args.get("prompt").cloned().unwrap_or(Value::Null) });
             if let Some(m) = args.get("model") {
                 body["model"] = m.clone();
             }
-            http("POST", &format!("/api/paperclip/companies/{company}/jobs"), Some(body)).await
+            Ok((
+                "POST",
+                format!("/api/paperclip/companies/{company}/jobs"),
+                Some(body),
+            ))
         }
         "paperclip_list_jobs" => {
             let company = args.get("companyId").and_then(Value::as_str).unwrap_or("");
-            http("GET", &format!("/api/paperclip/companies/{company}/jobs"), None).await
+            Ok((
+                "GET",
+                format!("/api/paperclip/companies/{company}/jobs"),
+                None,
+            ))
+        }
+        "paperclip_hire_agent" => {
+            let company = args.get("companyId").and_then(Value::as_str).unwrap_or("");
+            let mut body = json!({ "name": args.get("name").cloned().unwrap_or(Value::Null) });
+            if let Some(role) = args.get("role") {
+                body["role"] = role.clone();
+            }
+            if let Some(model) = args.get("model") {
+                body["model"] = model.clone();
+            }
+            Ok((
+                "POST",
+                format!("/api/paperclip/companies/{company}/agents"),
+                Some(body),
+            ))
+        }
+        "paperclip_list_agents" => {
+            let company = args.get("companyId").and_then(Value::as_str).unwrap_or("");
+            Ok((
+                "GET",
+                format!("/api/paperclip/companies/{company}/agents"),
+                None,
+            ))
+        }
+        "paperclip_list_approvals" => {
+            let company = args.get("companyId").and_then(Value::as_str).unwrap_or("");
+            Ok((
+                "GET",
+                format!("/api/paperclip/companies/{company}/approvals"),
+                None,
+            ))
+        }
+        "paperclip_decide_approval" => {
+            let approval = args.get("approvalId").and_then(Value::as_str).unwrap_or("");
+            Ok((
+                "POST",
+                format!("/api/paperclip/approvals/{approval}/decide"),
+                Some(json!({ "approve": args.get("approve").cloned().unwrap_or(Value::Null) })),
+            ))
         }
         other => anyhow::bail!("unknown tool: {other}"),
     }
+}
+
+async fn call_tool(name: &str, args: &Value) -> anyhow::Result<Value> {
+    let (method, path, body) = tool_http_request(name, args)?;
+    http(method, &path, body).await
 }
 
 fn reply(id: &Value, result: Value) -> Value {
@@ -129,5 +212,77 @@ fn main() {
             let _ = writeln!(stdout, "{response}");
             let _ = stdout.flush();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tools_list_includes_hiring_and_approval_tools() {
+        let tools = tools();
+        let names = tools
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|tool| tool.get("name").and_then(Value::as_str))
+            .collect::<Vec<_>>();
+
+        assert!(names.contains(&"paperclip_hire_agent"));
+        assert!(names.contains(&"paperclip_list_agents"));
+        assert!(names.contains(&"paperclip_list_approvals"));
+        assert!(names.contains(&"paperclip_decide_approval"));
+    }
+
+    #[test]
+    fn tool_http_request_maps_hiring_and_approval_tools() {
+        let hire = tool_http_request(
+            "paperclip_hire_agent",
+            &json!({
+                "companyId": "company-1",
+                "name": "Ada Lovelace",
+                "role": "engineer",
+                "model": "gpt-5.4-mini"
+            }),
+        )
+        .unwrap();
+        assert_eq!(hire.0, "POST");
+        assert_eq!(hire.1, "/api/paperclip/companies/company-1/agents");
+        assert_eq!(
+            hire.2,
+            Some(json!({
+                "name": "Ada Lovelace",
+                "role": "engineer",
+                "model": "gpt-5.4-mini"
+            }))
+        );
+
+        let agents = tool_http_request(
+            "paperclip_list_agents",
+            &json!({ "companyId": "company-1" }),
+        )
+        .unwrap();
+        assert_eq!(agents.0, "GET");
+        assert_eq!(agents.1, "/api/paperclip/companies/company-1/agents");
+        assert_eq!(agents.2, None);
+
+        let approvals = tool_http_request(
+            "paperclip_list_approvals",
+            &json!({ "companyId": "company-1" }),
+        )
+        .unwrap();
+        assert_eq!(approvals.0, "GET");
+        assert_eq!(approvals.1, "/api/paperclip/companies/company-1/approvals");
+        assert_eq!(approvals.2, None);
+
+        let decide = tool_http_request(
+            "paperclip_decide_approval",
+            &json!({ "approvalId": "approval-1", "approve": false }),
+        )
+        .unwrap();
+        assert_eq!(decide.0, "POST");
+        assert_eq!(decide.1, "/api/paperclip/approvals/approval-1/decide");
+        assert_eq!(decide.2, Some(json!({ "approve": false })));
     }
 }

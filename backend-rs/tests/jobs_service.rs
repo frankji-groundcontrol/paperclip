@@ -11,6 +11,7 @@ use paperclip_backend::{
         broker::{AuthBroker, InMemorySessionStore, SessionStore, StoredSession},
         data::{Auth, DataGateway},
         gateway::DisabledSupabaseGateway,
+        keys::hash_full_key,
     },
 };
 use serde_json::{json, Value};
@@ -69,15 +70,18 @@ impl LlmClient for FakeLlm {
         match &*result {
             Ok(answer) => Ok(answer.clone()),
             Err(_) => {
-                let err = std::mem::replace(&mut *result, Ok(LlmAnswer {
-                    text: String::new(),
-                    model: String::new(),
-                    usage: LlmUsage {
-                        input_tokens: 0,
-                        output_tokens: 0,
-                        total_tokens: 0,
-                    },
-                }))
+                let err = std::mem::replace(
+                    &mut *result,
+                    Ok(LlmAnswer {
+                        text: String::new(),
+                        model: String::new(),
+                        usage: LlmUsage {
+                            input_tokens: 0,
+                            output_tokens: 0,
+                            total_tokens: 0,
+                        },
+                    }),
+                )
                 .unwrap_err();
                 Err(err)
             }
@@ -118,12 +122,22 @@ impl DataGateway for FakeData {
             "complete_job_with_key" => json!(true),
             "fail_job_with_key" => json!(true),
             "list_jobs_with_key" => json!([{ "id": "job-1", "status": "succeeded" }]),
+            "hire_agent_with_key" => json!({
+                "agentId": "agent-1",
+                "status": "pending_approval",
+                "approvalId": "approval-1"
+            }),
+            "list_agents_with_key" => json!([{ "id": "agent-1", "name": "Ada" }]),
+            "list_approvals_with_key" => json!([{ "id": "approval-1", "status": "pending" }]),
+            "decide_approval_with_key" => json!({ "status": "approved" }),
             // session-path RPCs
             "whoami" => json!({ "user": { "default_team_id": "team-1" } }),
             "create_company" => json!("company-1"),
             "create_job" => json!("job-1"),
             "complete_job" => json!(true),
             "fail_job" => json!(true),
+            "hire_agent" => json!({ "agentId": "agent-1", "status": "active" }),
+            "decide_approval" => json!({ "status": "rejected" }),
             other => anyhow::bail!("unexpected rpc {other}"),
         })
     }
@@ -136,6 +150,10 @@ impl DataGateway for FakeData {
         });
         Ok(if path.starts_with("my_companies") {
             json!([{ "id": "company-1" }])
+        } else if path.starts_with("my_agents") {
+            json!([{ "id": "agent-1", "name": "Ada" }])
+        } else if path.starts_with("my_approvals") {
+            json!([{ "id": "approval-1", "status": "pending" }])
         } else {
             json!([{ "id": "job-1" }])
         })
@@ -152,7 +170,13 @@ async fn run_job_api_key_happy_path_records_exact_rpcs() {
     );
 
     let result = service
-        .run_job(API_KEY, "company-1", "Reply with only the number 7", None, None)
+        .run_job(
+            API_KEY,
+            "company-1",
+            "Reply with only the number 7",
+            None,
+            None,
+        )
         .await
         .unwrap();
 
@@ -163,7 +187,10 @@ async fn run_job_api_key_happy_path_records_exact_rpcs() {
 
     let calls = data.calls();
     assert_eq!(
-        calls.iter().map(|call| call.name.as_str()).collect::<Vec<_>>(),
+        calls
+            .iter()
+            .map(|call| call.name.as_str())
+            .collect::<Vec<_>>(),
         vec!["create_job_with_key", "complete_job_with_key"]
     );
     assert_eq!(calls[0].auth, Auth::Anon);
@@ -195,7 +222,13 @@ async fn run_job_api_key_llm_error_persists_only_sanitized_error() {
     );
 
     let result = service
-        .run_job(API_KEY, "company-1", "Reply with only the number 7", None, None)
+        .run_job(
+            API_KEY,
+            "company-1",
+            "Reply with only the number 7",
+            None,
+            None,
+        )
         .await
         .unwrap();
 
@@ -205,7 +238,10 @@ async fn run_job_api_key_llm_error_persists_only_sanitized_error() {
 
     let calls = data.calls();
     assert_eq!(
-        calls.iter().map(|call| call.name.as_str()).collect::<Vec<_>>(),
+        calls
+            .iter()
+            .map(|call| call.name.as_str())
+            .collect::<Vec<_>>(),
         vec!["create_job_with_key", "fail_job_with_key"]
     );
     assert_eq!(calls[1].body["p_error"], "llm_request_failed");
@@ -230,7 +266,10 @@ async fn create_company_uses_api_key_rpc_with_name_param() {
     let calls = data.calls();
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].name, "create_company_with_key");
-    assert_eq!(sorted_keys(&calls[0].body), vec!["p_key_hash", "p_name", "p_prefix"]);
+    assert_eq!(
+        sorted_keys(&calls[0].body),
+        vec!["p_key_hash", "p_name", "p_prefix"]
+    );
     assert_eq!(calls[0].body["p_name"], "Acme");
     assert_eq!(calls[0].auth, Auth::Anon);
 }
@@ -263,7 +302,13 @@ async fn run_job_session_path_uses_session_rpcs_with_user_jwt() {
     );
 
     let result = service
-        .run_job("pcs_test", "company-1", "Reply with only the number 7", None, None)
+        .run_job(
+            "pcs_test",
+            "company-1",
+            "Reply with only the number 7",
+            None,
+            None,
+        )
         .await
         .unwrap();
 
@@ -319,7 +364,10 @@ async fn list_methods_use_api_key_rpcs() {
     assert_eq!(jobs[0]["id"], "job-1");
     let calls = data.calls();
     assert_eq!(
-        calls.iter().map(|call| call.name.as_str()).collect::<Vec<_>>(),
+        calls
+            .iter()
+            .map(|call| call.name.as_str())
+            .collect::<Vec<_>>(),
         vec!["list_companies_with_key", "list_jobs_with_key"]
     );
     assert_eq!(sorted_keys(&calls[0].body), vec!["p_key_hash", "p_prefix"]);
@@ -327,6 +375,212 @@ async fn list_methods_use_api_key_rpcs() {
         sorted_keys(&calls[1].body),
         vec!["p_company_id", "p_key_hash", "p_prefix"]
     );
+}
+
+#[tokio::test]
+async fn hire_agent_api_key_uses_with_key_rpc_and_exact_params() {
+    let data = FakeData::default();
+    let service = JobService::new(
+        Arc::new(data.clone()),
+        Arc::new(FakeLlm::succeeds()),
+        AuthBroker::default(),
+    );
+
+    let result = service
+        .hire_agent(
+            API_KEY,
+            "company-1",
+            "Ada Lovelace",
+            Some("engineer"),
+            Some("gpt-5.4-mini"),
+            Some("CTO"),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result["agentId"], "agent-1");
+    assert_eq!(result["status"], "pending_approval");
+    assert_eq!(result["approvalId"], "approval-1");
+
+    let calls = data.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "hire_agent_with_key");
+    assert_eq!(calls[0].auth, Auth::Anon);
+    assert_eq!(
+        sorted_keys(&calls[0].body),
+        vec![
+            "p_company_id",
+            "p_key_hash",
+            "p_model",
+            "p_name",
+            "p_prefix",
+            "p_role",
+            "p_title"
+        ]
+    );
+    assert_eq!(calls[0].body["p_company_id"], "company-1");
+    assert_api_key_params(&calls[0].body);
+    assert_eq!(calls[0].body["p_name"], "Ada Lovelace");
+    assert_eq!(calls[0].body["p_role"], "engineer");
+    assert_eq!(calls[0].body["p_model"], "gpt-5.4-mini");
+    assert_eq!(calls[0].body["p_title"], "CTO");
+}
+
+#[tokio::test]
+async fn hire_agent_session_path_uses_session_rpc_with_user_jwt() {
+    let data = FakeData::default();
+    let service = JobService::new(
+        Arc::new(data.clone()),
+        Arc::new(FakeLlm::succeeds()),
+        broker_with_session(),
+    );
+
+    let result = service
+        .hire_agent("pcs_test", "company-1", "Ada Lovelace", None, None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(result["agentId"], "agent-1");
+    assert_eq!(result["status"], "active");
+
+    let calls = data.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "hire_agent");
+    assert_eq!(calls[0].auth, Auth::Bearer("jwt-abc".to_string()));
+    assert_eq!(
+        sorted_keys(&calls[0].body),
+        vec!["p_company_id", "p_model", "p_name", "p_role", "p_title"]
+    );
+    assert_eq!(calls[0].body["p_company_id"], "company-1");
+    assert_eq!(calls[0].body["p_name"], "Ada Lovelace");
+    assert_eq!(calls[0].body["p_role"], Value::Null);
+    assert_eq!(calls[0].body["p_model"], Value::Null);
+    assert_eq!(calls[0].body["p_title"], Value::Null);
+}
+
+#[tokio::test]
+async fn list_agent_and_approval_methods_use_api_key_rpcs() {
+    let data = FakeData::default();
+    let service = JobService::new(
+        Arc::new(data.clone()),
+        Arc::new(FakeLlm::succeeds()),
+        AuthBroker::default(),
+    );
+
+    let agents = service.list_agents(API_KEY, "company-1").await.unwrap();
+    let approvals = service.list_approvals(API_KEY, "company-1").await.unwrap();
+
+    assert_eq!(agents[0]["id"], "agent-1");
+    assert_eq!(approvals[0]["id"], "approval-1");
+    let calls = data.calls();
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| call.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["list_agents_with_key", "list_approvals_with_key"]
+    );
+    assert_eq!(
+        sorted_keys(&calls[0].body),
+        vec!["p_company_id", "p_key_hash", "p_prefix"]
+    );
+    assert_eq!(calls[0].body["p_company_id"], "company-1");
+    assert_api_key_params(&calls[0].body);
+    assert_eq!(calls[0].auth, Auth::Anon);
+    assert_eq!(
+        sorted_keys(&calls[1].body),
+        vec!["p_company_id", "p_key_hash", "p_prefix"]
+    );
+    assert_eq!(calls[1].body["p_company_id"], "company-1");
+    assert_api_key_params(&calls[1].body);
+    assert_eq!(calls[1].auth, Auth::Anon);
+}
+
+#[tokio::test]
+async fn list_agent_and_approval_methods_use_session_views_with_user_jwt() {
+    let data = FakeData::default();
+    let service = JobService::new(
+        Arc::new(data.clone()),
+        Arc::new(FakeLlm::succeeds()),
+        broker_with_session(),
+    );
+
+    let agents = service.list_agents("pcs_test", "company-1").await.unwrap();
+    let approvals = service
+        .list_approvals("pcs_test", "company-1")
+        .await
+        .unwrap();
+
+    assert_eq!(agents[0]["id"], "agent-1");
+    assert_eq!(approvals[0]["id"], "approval-1");
+    let calls = data.calls();
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| call.name.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "GET my_agents?company_id=eq.company-1&select=*&order=created_at.desc",
+            "GET my_approvals?company_id=eq.company-1&select=*&order=created_at.desc"
+        ]
+    );
+    assert_eq!(calls[0].auth, Auth::Bearer("jwt-abc".to_string()));
+    assert_eq!(calls[1].auth, Auth::Bearer("jwt-abc".to_string()));
+}
+
+#[tokio::test]
+async fn decide_approval_api_key_uses_with_key_rpc_and_exact_params() {
+    let data = FakeData::default();
+    let service = JobService::new(
+        Arc::new(data.clone()),
+        Arc::new(FakeLlm::succeeds()),
+        AuthBroker::default(),
+    );
+
+    let result = service
+        .decide_approval(API_KEY, "approval-1", true)
+        .await
+        .unwrap();
+
+    assert_eq!(result["status"], "approved");
+    let calls = data.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "decide_approval_with_key");
+    assert_eq!(
+        sorted_keys(&calls[0].body),
+        vec!["p_approval_id", "p_approve", "p_key_hash", "p_prefix"]
+    );
+    assert_eq!(calls[0].body["p_approval_id"], "approval-1");
+    assert_eq!(calls[0].body["p_approve"], true);
+    assert_api_key_params(&calls[0].body);
+    assert_eq!(calls[0].auth, Auth::Anon);
+}
+
+#[tokio::test]
+async fn decide_approval_session_path_uses_session_rpc_with_user_jwt() {
+    let data = FakeData::default();
+    let service = JobService::new(
+        Arc::new(data.clone()),
+        Arc::new(FakeLlm::succeeds()),
+        broker_with_session(),
+    );
+
+    let result = service
+        .decide_approval("pcs_test", "approval-1", false)
+        .await
+        .unwrap();
+
+    assert_eq!(result["status"], "rejected");
+    let calls = data.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "decide_approval");
+    assert_eq!(
+        sorted_keys(&calls[0].body),
+        vec!["p_approval_id", "p_approve"]
+    );
+    assert_eq!(calls[0].body["p_approval_id"], "approval-1");
+    assert_eq!(calls[0].body["p_approve"], false);
+    assert_eq!(calls[0].auth, Auth::Bearer("jwt-abc".to_string()));
 }
 
 fn sorted_keys(value: &Value) -> Vec<&str> {
@@ -340,3 +594,7 @@ fn sorted_keys(value: &Value) -> Vec<&str> {
     keys
 }
 
+fn assert_api_key_params(body: &Value) {
+    assert_eq!(body["p_prefix"], "pc_jobs");
+    assert_eq!(body["p_key_hash"], hash_full_key(API_KEY));
+}

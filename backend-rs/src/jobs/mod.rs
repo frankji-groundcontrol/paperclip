@@ -84,7 +84,10 @@ impl JobService {
         if let Some(jwt) = self.session_jwt(bearer).await? {
             return self
                 .data
-                .get("my_companies?select=*&order=created_at.desc", Auth::Bearer(jwt))
+                .get(
+                    "my_companies?select=*&order=created_at.desc",
+                    Auth::Bearer(jwt),
+                )
                 .await;
         }
         let key = api_key_parts(bearer)?;
@@ -220,6 +223,122 @@ impl JobService {
             .rpc(
                 "list_jobs_with_key",
                 json!({ "p_prefix": key.prefix, "p_key_hash": key.key_hash, "p_company_id": company_id }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn hire_agent(
+        &self,
+        bearer: &str,
+        company_id: &str,
+        name: &str,
+        role: Option<&str>,
+        model: Option<&str>,
+        title: Option<&str>,
+    ) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .rpc(
+                    "hire_agent",
+                    json!({
+                        "p_company_id": company_id,
+                        "p_name": name,
+                        "p_role": role,
+                        "p_model": model,
+                        "p_title": title,
+                    }),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "hire_agent_with_key",
+                json!({
+                    "p_prefix": key.prefix,
+                    "p_key_hash": key.key_hash,
+                    "p_company_id": company_id,
+                    "p_name": name,
+                    "p_role": role,
+                    "p_model": model,
+                    "p_title": title,
+                }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn list_agents(&self, bearer: &str, company_id: &str) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .get(
+                    &format!("my_agents?company_id=eq.{company_id}&select=*&order=created_at.desc"),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "list_agents_with_key",
+                json!({ "p_prefix": key.prefix, "p_key_hash": key.key_hash, "p_company_id": company_id }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn list_approvals(&self, bearer: &str, company_id: &str) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .get(
+                    &format!(
+                        "my_approvals?company_id=eq.{company_id}&select=*&order=created_at.desc"
+                    ),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "list_approvals_with_key",
+                json!({ "p_prefix": key.prefix, "p_key_hash": key.key_hash, "p_company_id": company_id }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn decide_approval(
+        &self,
+        bearer: &str,
+        approval_id: &str,
+        approve: bool,
+    ) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .rpc(
+                    "decide_approval",
+                    json!({ "p_approval_id": approval_id, "p_approve": approve }),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "decide_approval_with_key",
+                json!({
+                    "p_prefix": key.prefix,
+                    "p_key_hash": key.key_hash,
+                    "p_approval_id": approval_id,
+                    "p_approve": approve,
+                }),
                 Auth::Anon,
             )
             .await
