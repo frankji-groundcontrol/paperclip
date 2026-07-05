@@ -110,3 +110,55 @@ async fn live_bad_password_rejected() {
 
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+// Full session lifecycle through the REAL broker: login -> session -> logout ->
+// the opaque pcs_ token is rejected afterwards.
+#[tokio::test]
+#[ignore]
+async fn live_session_logout_roundtrip() {
+    if !live_enabled() {
+        return;
+    }
+    let app = app();
+    let (_, login) = send(
+        &app,
+        "POST",
+        "/api/auth/login",
+        None,
+        Some(json!({ "email": env("PC_TEST_EMAIL"), "password": env("PC_TEST_PASSWORD") })),
+    )
+    .await;
+    let token = login["session"].as_str().expect("session token").to_string();
+
+    let (s1, _) = send(&app, "GET", "/api/auth/session", Some(&token), None).await;
+    assert_eq!(s1, StatusCode::OK);
+
+    let (logout_status, logout_body) =
+        send(&app, "POST", "/api/auth/logout", Some(&token), None).await;
+    assert_eq!(logout_status, StatusCode::OK);
+    assert_eq!(logout_body, json!({ "ok": true }));
+
+    let (s2, _) = send(&app, "GET", "/api/auth/session", Some(&token), None).await;
+    assert_eq!(s2, StatusCode::UNAUTHORIZED);
+}
+
+// API-key auth path through the REAL broker: a real `paperclip_` key (minted out
+// of band on a real team) resolves to that team via resolve_api_key. Requires
+// PC_TEST_API_KEY + PC_TEST_TEAM_ID (set by the acceptance mint step).
+#[tokio::test]
+#[ignore]
+async fn live_api_key_bearer_resolves_team() {
+    if !live_enabled() {
+        return;
+    }
+    let Ok(api_key) = std::env::var("PC_TEST_API_KEY") else {
+        return;
+    };
+    let team = env("PC_TEST_TEAM_ID");
+    let app = app();
+
+    let (status, body) = send(&app, "GET", "/api/auth/session", Some(&api_key), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["kind"], "apiKey");
+    assert_eq!(body["teamId"], team);
+}
