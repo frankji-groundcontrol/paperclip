@@ -60,3 +60,7 @@ tests/release-smoke/playwright-report/
 .superpowers/
 .claude/worktrees/
 .herenow
+
+# Real test-user credentials (never commit)
+test_users.json
+**/test_users.json
