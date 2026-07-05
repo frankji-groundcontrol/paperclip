@@ -15,6 +15,9 @@ pub enum Auth {
 #[async_trait]
 pub trait DataGateway: Send + Sync {
     async fn rpc(&self, name: &str, body: Value, auth: Auth) -> anyhow::Result<Value>;
+
+    /// GET a PostgREST resource (e.g. a `my_*` view) under the paperclip schema.
+    async fn get(&self, path: &str, auth: Auth) -> anyhow::Result<Value>;
 }
 
 #[async_trait]
@@ -40,6 +43,26 @@ impl DataGateway for HttpSupabaseGateway {
         }
         Ok(response.json().await?)
     }
+
+    async fn get(&self, path: &str, auth: Auth) -> anyhow::Result<Value> {
+        let bearer = match auth {
+            Auth::Anon => self.anon_key().to_string(),
+            Auth::Bearer(token) => token,
+        };
+        let response = self
+            .client()
+            .get(self.rest_url(path))
+            .header("apikey", self.anon_key())
+            .header(header::AUTHORIZATION, format!("Bearer {bearer}"))
+            .header("Accept-Profile", PAPERCLIP_SCHEMA)
+            .send()
+            .await?;
+        let status = response.status();
+        if !status.is_success() {
+            anyhow::bail!("Supabase GET failed with {status}");
+        }
+        Ok(response.json().await?)
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -48,6 +71,10 @@ pub struct DisabledDataGateway;
 #[async_trait]
 impl DataGateway for DisabledDataGateway {
     async fn rpc(&self, _name: &str, _body: Value, _auth: Auth) -> anyhow::Result<Value> {
+        anyhow::bail!("Supabase data is not configured")
+    }
+
+    async fn get(&self, _path: &str, _auth: Auth) -> anyhow::Result<Value> {
         anyhow::bail!("Supabase data is not configured")
     }
 }

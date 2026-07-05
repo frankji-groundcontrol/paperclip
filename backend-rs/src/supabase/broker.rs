@@ -162,6 +162,31 @@ impl AuthBroker {
 
         anyhow::bail!("unsupported bearer token")
     }
+
+    /// For a `pcs_` session bearer, return a currently-valid GoTrue access token
+    /// (refreshing if near expiry), or `Ok(None)` for a non-session bearer. Used
+    /// server-side only for the session data path; the JWT never reaches a client.
+    pub async fn session_access_token(&self, bearer: &str) -> anyhow::Result<Option<String>> {
+        if !bearer.starts_with("pcs_") {
+            return Ok(None);
+        }
+        let Some(mut session) = self.sessions.get(bearer) else {
+            anyhow::bail!("unknown session");
+        };
+        if session.expires_at <= SystemTime::now() + Duration::from_secs(60) {
+            match self.gateway.refresh(&session.refresh_token).await {
+                Ok(refreshed) => {
+                    session = stored_session(&refreshed);
+                    self.sessions.put(bearer.to_string(), session.clone());
+                }
+                Err(err) => {
+                    self.sessions.delete(bearer);
+                    return Err(err);
+                }
+            }
+        }
+        Ok(Some(session.access_token))
+    }
 }
 
 fn stored_session(session: &GoTrueSession) -> StoredSession {

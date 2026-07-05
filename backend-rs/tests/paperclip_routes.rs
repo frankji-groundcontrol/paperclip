@@ -59,6 +59,15 @@ impl DataGateway for FakeData {
             other => anyhow::bail!("unexpected rpc {other}"),
         })
     }
+
+    async fn get(&self, path: &str, _auth: Auth) -> anyhow::Result<Value> {
+        self.calls.lock().unwrap().push(format!("GET {path}"));
+        Ok(if path.starts_with("my_companies") {
+            json!([{ "id": "company-1" }])
+        } else {
+            json!([{ "id": "job-1" }])
+        })
+    }
 }
 
 #[derive(Clone, Default)]
@@ -192,7 +201,7 @@ async fn paperclip_routes_reject_non_api_key_bearer_with_generic_401() {
         &app,
         "POST",
         "/api/paperclip/companies/company-1/jobs",
-        Some("pcs_session_token"),
+        Some("garbage-not-a-key-or-session"),
         Some(json!({ "prompt": "hello" })),
     )
     .await;
@@ -211,12 +220,13 @@ async fn app_from_env_builds_router_without_contacting_network() {
 }
 
 fn route_app() -> axum::Router {
+    let auth = AuthBroker::new(
+        Arc::new(FakeGateway::with_key("pc_routes")),
+        Arc::new(paperclip_backend::supabase::broker::InMemorySessionStore::default()),
+    );
     app_with(Repositories {
-        jobs: JobService::new(Arc::new(FakeData::default()), Arc::new(FakeLlm)),
-        supabase_auth: AuthBroker::new(
-            Arc::new(FakeGateway::with_key("pc_routes")),
-            Arc::new(paperclip_backend::supabase::broker::InMemorySessionStore::default()),
-        ),
+        jobs: JobService::new(Arc::new(FakeData::default()), Arc::new(FakeLlm), auth.clone()),
+        supabase_auth: auth,
         ..Default::default()
     })
 }

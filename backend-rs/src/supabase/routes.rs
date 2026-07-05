@@ -240,7 +240,7 @@ fn map_job_error(err: anyhow::Error) -> (StatusCode, Json<Value>) {
             Json(json!({ "error": "api_key_required" })),
         );
     }
-    if message.contains("28000") {
+    if message.contains("28000") || message.contains("unknown session") {
         return (
             StatusCode::UNAUTHORIZED,
             Json(json!({ "error": "unauthorized" })),

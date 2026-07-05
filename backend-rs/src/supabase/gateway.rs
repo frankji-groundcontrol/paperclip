@@ -94,6 +94,10 @@ impl HttpSupabaseGateway {
         format!("{}/rest/v1/rpc/{}", self.url, name)
     }
 
+    pub(crate) fn rest_url(&self, path: &str) -> String {
+        format!("{}/rest/v1/{}", self.url, path)
+    }
+
     pub(crate) fn anon_key(&self) -> &str {
         &self.anon_key
     }

@@ -653,7 +653,9 @@ pub fn repositories_from_env() -> Repositories {
         Arc::new(DisabledLlmClient)
     };
 
-    repos.jobs = JobService::new(data, llm);
+    // Share the SAME AuthBroker (and its session store) so sessions minted at
+    // /api/auth/login are visible to the JobService session data path.
+    repos.jobs = JobService::new(data, llm, repos.supabase_auth.clone());
     repos
 }
 
