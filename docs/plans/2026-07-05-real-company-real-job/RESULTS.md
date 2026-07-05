@@ -46,6 +46,18 @@ exact RPC names + sanitized error; route tests; SSE parser.
 Custom schema only (no `public`); **no service-role key**; **OpenAI key + Supabase creds stay
 server-side** (leak check E12); api-key data path forge-proof (key-credential RPCs); RLS team-scoped.
 
-## Not in this milestone (P3)
-Frontend for non-agent users (Nuxt login → companies → job console) — planned in `04-frontend.md`,
-deferred per `06-eng-review.md`; the acceptance gate is the agent path (CLI/MCP), which is proven above.
+## Session path + frontend for non-agent users (now done — `08-session-path-and-frontend.md`)
+- **Backend session path:** `AuthBroker::session_access_token` exposes the session's GoTrue JWT
+  server-side only; `JobService` now dispatches on the bearer — `pcs_…` (browser session) → session
+  RPCs + `my_*` views with the user JWT; `paperclip_…` (agent) → the key-credential path. New unit
+  tests: `run_job_session_path_uses_session_rpcs_with_user_jwt`,
+  `create_company_session_path_resolves_default_team_then_creates`.
+- **E11 (session acceptance, real): 9/9** (`run_session_acceptance.py`): a real user logs in via the
+  broker (email+password → opaque `pcs_`), forms a real company, and runs a **real OpenAI job → `4`**,
+  persisted (subject=user, created_by=the user); lists work; a second user cannot see it (RLS); the
+  login payload leaks no JWT/anon key.
+- **Frontend (Nuxt):** `pages/paperclip.vue` + `PaperclipConsole.vue` + `usePaperclipSession.ts`
+  (login → companies → job console). Frontend tests **162/162** (incl. 5 composable + 2 component);
+  `nuxt build` compiles the page. The real browser→proxy→broker→Supabase/OpenAI wire was driven
+  end-to-end (login → company → real OpenAI job `4`).
+- Backend tests **282/0/4**.
