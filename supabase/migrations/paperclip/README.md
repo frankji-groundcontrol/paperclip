@@ -18,6 +18,7 @@ rationale live in [`docs/plans/2026-07-05-paperclip-supabase-auth/`](../../../do
 | 0008 | `0008_fix_accept_invitation_ambiguity.sql` | **bug fix**: `accept_invitation` `RETURNS TABLE(team_id …)` made `ON CONFLICT (team_id, …)` ambiguous (42702) → `#variable_conflict use_column` |
 | 0009 | `0009_authz_hardening.sql` | **authz fixes** from pre-commit adversarial review: cli_approve cross-team key mint (CRITICAL), owner-demotion via add_team_member, admin-grants-owner via decide_join_request, admin acting on owners, join-request spam. Proven blocked by ATK1–ATK5. |
 | 0010 | `0010_fix_rls_helper_grants.sql` | **fix for 0009**: restore EXECUTE on the two private helpers (`fn_user_team_ids`, `fn_has_team_role`) that RLS policies / `my_*` views invoke as the caller — 0009's blanket revoke had broken all view/RLS reads. |
+| 0011 | `0011_companies_jobs.sql` | **companies + jobs**: team-scoped `companies` and LLM-backed `jobs` (`running/succeeded/failed`), RLS, `my_companies`/`my_jobs`, session RPCs + **key-credential** `*_with_key` RPCs (api-key data path, `fn_key_principal` explicit-revoked), idempotency `client_token`, `fail_stale_jobs` reaper. See [`docs/plans/2026-07-05-real-company-real-job/`](../../../docs/plans/2026-07-05-real-company-real-job/). |
 
 Apply with the Supabase MCP `apply_migration` (or `supabase db push`) **in order**. Each is
 idempotent (`create … if not exists` / `create or replace`).
