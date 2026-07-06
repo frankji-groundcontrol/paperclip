@@ -59,6 +59,37 @@ where
             "/api/paperclip/approvals/:approvalId/decide",
             post(decide_paperclip_approval::<S>),
         )
+        // Phase 02: issues / goals / projects
+        .route(
+            "/api/paperclip/companies/:companyId/issues",
+            get(list_paperclip_issues::<S>).post(create_paperclip_issue::<S>),
+        )
+        .route(
+            "/api/paperclip/issues/:issueId/comments",
+            get(list_paperclip_issue_comments::<S>).post(add_paperclip_issue_comment::<S>),
+        )
+        .route(
+            "/api/paperclip/companies/:companyId/goals",
+            get(list_paperclip_goals::<S>).post(create_paperclip_goal::<S>),
+        )
+        .route(
+            "/api/paperclip/companies/:companyId/projects",
+            get(list_paperclip_projects::<S>).post(create_paperclip_project::<S>),
+        )
+        // Phase 07: agent lifecycle + runs
+        .route("/api/paperclip/agents/:agentId/pause", post(pause_paperclip_agent::<S>))
+        .route("/api/paperclip/agents/:agentId/resume", post(resume_paperclip_agent::<S>))
+        .route("/api/paperclip/agents/:agentId/terminate", post(terminate_paperclip_agent::<S>))
+        .route(
+            "/api/paperclip/companies/:companyId/runs",
+            get(list_paperclip_runs::<S>).post(create_paperclip_run::<S>),
+        )
+        .route("/api/paperclip/runs/:runId/complete", post(complete_paperclip_run::<S>))
+        // Phase 06: costs + dashboard + activity
+        .route("/api/paperclip/companies/:companyId/costs", post(ingest_paperclip_cost::<S>))
+        .route("/api/paperclip/companies/:companyId/cost-events", get(list_paperclip_cost_events::<S>))
+        .route("/api/paperclip/companies/:companyId/dashboard", get(get_paperclip_dashboard::<S>))
+        .route("/api/paperclip/companies/:companyId/activity", get(list_paperclip_activity::<S>))
 }
 
 pub fn cli_auth_routes<S>() -> Router<S>
@@ -435,6 +466,283 @@ where
         .await
         .map_err(map_job_error)?;
     Ok(Json(decision))
+}
+
+// ===== Phase 02/06/07 handler functions =====
+
+#[derive(serde::Deserialize)]
+struct CreateIssueBody {
+    title: String,
+    #[serde(default)]
+    parent_id: Option<String>,
+    #[serde(default)]
+    project_id: Option<String>,
+    #[serde(default)]
+    goal_id: Option<String>,
+    #[serde(default)]
+    assignee_agent_id: Option<String>,
+    #[serde(default)]
+    priority: Option<String>,
+}
+
+async fn create_paperclip_issue<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+    Json(payload): Json<CreateIssueBody>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let result = jobs
+        .create_issue(
+            bearer, &company_id, &payload.title,
+            payload.parent_id.as_deref(), payload.project_id.as_deref(),
+            payload.goal_id.as_deref(), payload.assignee_agent_id.as_deref(),
+            payload.priority.as_deref().unwrap_or("medium"),
+        )
+        .await.map_err(map_job_error)?;
+    Ok(Json(result))
+}
+
+async fn list_paperclip_issues<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let issues = jobs.list_issues(bearer, &company_id).await.map_err(map_job_error)?;
+    Ok(Json(json!({ "issues": issues })))
+}
+
+#[derive(serde::Deserialize)]
+struct AddCommentBody { body: String }
+
+async fn add_paperclip_issue_comment<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(issue_id): axum::extract::Path<String>,
+    Json(payload): Json<AddCommentBody>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let result = jobs.add_issue_comment(bearer, &issue_id, &payload.body).await.map_err(map_job_error)?;
+    Ok(Json(result))
+}
+
+async fn list_paperclip_issue_comments<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(issue_id): axum::extract::Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let comments = jobs.list_issue_comments(bearer, &issue_id).await.map_err(map_job_error)?;
+    Ok(Json(json!({ "comments": comments })))
+}
+
+#[derive(serde::Deserialize)]
+struct CreateGoalBody { title: String, #[serde(default)] level: Option<String> }
+
+async fn create_paperclip_goal<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+    Json(payload): Json<CreateGoalBody>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let result = jobs.create_goal(bearer, &company_id, &payload.title, payload.level.as_deref().unwrap_or("task")).await.map_err(map_job_error)?;
+    Ok(Json(result))
+}
+
+async fn list_paperclip_goals<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let goals = jobs.list_goals(bearer, &company_id).await.map_err(map_job_error)?;
+    Ok(Json(json!({ "goals": goals })))
+}
+
+#[derive(serde::Deserialize)]
+struct CreateProjectBody { name: String }
+
+async fn create_paperclip_project<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+    Json(payload): Json<CreateProjectBody>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let result = jobs.create_project(bearer, &company_id, &payload.name).await.map_err(map_job_error)?;
+    Ok(Json(result))
+}
+
+async fn list_paperclip_projects<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let projects = jobs.list_projects(bearer, &company_id).await.map_err(map_job_error)?;
+    Ok(Json(json!({ "projects": projects })))
+}
+
+async fn pause_paperclip_agent<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(agent_id): axum::extract::Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let result = jobs.pause_agent(bearer, &agent_id).await.map_err(map_job_error)?;
+    Ok(Json(result))
+}
+
+async fn resume_paperclip_agent<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(agent_id): axum::extract::Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let result = jobs.resume_agent(bearer, &agent_id).await.map_err(map_job_error)?;
+    Ok(Json(result))
+}
+
+async fn terminate_paperclip_agent<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(agent_id): axum::extract::Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let result = jobs.terminate_agent(bearer, &agent_id).await.map_err(map_job_error)?;
+    Ok(Json(result))
+}
+
+#[derive(serde::Deserialize)]
+struct CreateRunBody { agent_id: String }
+
+async fn create_paperclip_run<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+    Json(payload): Json<CreateRunBody>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let result = jobs.create_heartbeat_run(bearer, &company_id, &payload.agent_id).await.map_err(map_job_error)?;
+    Ok(Json(result))
+}
+
+#[derive(serde::Deserialize)]
+struct CompleteRunBody { result_text: String }
+
+async fn complete_paperclip_run<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(run_id): axum::extract::Path<String>,
+    Json(payload): Json<CompleteRunBody>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let result = jobs.complete_heartbeat_run(bearer, &run_id, &payload.result_text).await.map_err(map_job_error)?;
+    Ok(Json(result))
+}
+
+async fn list_paperclip_runs<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let runs = jobs.list_heartbeat_runs(bearer, &company_id).await.map_err(map_job_error)?;
+    Ok(Json(json!({ "runs": runs })))
+}
+
+#[derive(serde::Deserialize)]
+struct IngestCostBody {
+    #[serde(default)]
+    agent_id: Option<String>,
+    #[serde(default)]
+    input_tokens: i64,
+    #[serde(default)]
+    output_tokens: i64,
+    #[serde(default)]
+    cost_cents: i64,
+}
+
+async fn ingest_paperclip_cost<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+    Json(payload): Json<IngestCostBody>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let result = jobs
+        .ingest_cost_event(bearer, &company_id, payload.agent_id.as_deref(),
+            payload.input_tokens, payload.output_tokens, payload.cost_cents)
+        .await.map_err(map_job_error)?;
+    Ok(Json(result))
+}
+
+async fn list_paperclip_cost_events<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let costs = jobs.list_cost_events(bearer, &company_id).await.map_err(map_job_error)?;
+    Ok(Json(json!({ "costEvents": costs })))
+}
+
+async fn get_paperclip_dashboard<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let summary = jobs.get_dashboard_summary(bearer, &company_id).await.map_err(map_job_error)?;
+    Ok(Json(summary))
+}
+
+async fn list_paperclip_activity<S>(
+    State(jobs): State<JobService>,
+    headers: HeaderMap,
+    axum::extract::Path(company_id): axum::extract::Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)>
+where JobService: FromRef<S>, S: Send + Sync,
+{
+    let bearer = bearer_token_from_headers(&headers)?;
+    let activity = jobs.list_activity(bearer, &company_id).await.map_err(map_job_error)?;
+    Ok(Json(json!({ "activity": activity })))
 }
 
 fn map_job_error(err: anyhow::Error) -> (StatusCode, Json<Value>) {

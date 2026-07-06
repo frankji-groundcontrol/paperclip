@@ -343,6 +343,503 @@ impl JobService {
             )
             .await
     }
+
+    pub async fn create_issue(
+        &self,
+        bearer: &str,
+        company_id: &str,
+        title: &str,
+        parent_id: Option<&str>,
+        project_id: Option<&str>,
+        goal_id: Option<&str>,
+        assignee_agent_id: Option<&str>,
+        priority: &str,
+    ) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .rpc(
+                    "create_issue",
+                    json!({
+                        "p_company_id": company_id,
+                        "p_title": title,
+                        "p_parent_id": parent_id,
+                        "p_project_id": project_id,
+                        "p_goal_id": goal_id,
+                        "p_assignee_agent_id": assignee_agent_id,
+                        "p_priority": priority,
+                    }),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "create_issue_with_key",
+                json!({
+                    "p_prefix": key.prefix,
+                    "p_key_hash": key.key_hash,
+                    "p_company_id": company_id,
+                    "p_title": title,
+                    "p_parent_id": parent_id,
+                    "p_project_id": project_id,
+                    "p_goal_id": goal_id,
+                    "p_assignee_agent_id": assignee_agent_id,
+                    "p_priority": priority,
+                }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn list_issues(&self, bearer: &str, company_id: &str) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .get(
+                    &format!(
+                        "my_issues?company_id=eq.{company_id}&select=*&order=created_at.desc"
+                    ),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "list_issues_with_key",
+                json!({ "p_prefix": key.prefix, "p_key_hash": key.key_hash, "p_company_id": company_id }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn add_issue_comment(
+        &self,
+        bearer: &str,
+        issue_id: &str,
+        body: &str,
+    ) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .rpc(
+                    "add_issue_comment",
+                    json!({ "p_issue_id": issue_id, "p_body": body }),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "add_issue_comment_with_key",
+                json!({
+                    "p_prefix": key.prefix,
+                    "p_key_hash": key.key_hash,
+                    "p_issue_id": issue_id,
+                    "p_body": body,
+                }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn list_issue_comments(
+        &self,
+        bearer: &str,
+        issue_id: &str,
+    ) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .get(
+                    &format!(
+                        "my_issue_comments?issue_id=eq.{issue_id}&select=*&order=created_at.asc"
+                    ),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "list_issue_comments_with_key",
+                json!({ "p_prefix": key.prefix, "p_key_hash": key.key_hash, "p_issue_id": issue_id }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn create_goal(
+        &self,
+        bearer: &str,
+        company_id: &str,
+        title: &str,
+        level: &str,
+    ) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .rpc(
+                    "create_goal",
+                    json!({ "p_company_id": company_id, "p_title": title, "p_level": level }),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "create_goal_with_key",
+                json!({
+                    "p_prefix": key.prefix,
+                    "p_key_hash": key.key_hash,
+                    "p_company_id": company_id,
+                    "p_title": title,
+                    "p_level": level,
+                }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn list_goals(&self, bearer: &str, company_id: &str) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .get(
+                    &format!("my_goals?company_id=eq.{company_id}&select=*&order=created_at.desc"),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "list_goals_with_key",
+                json!({ "p_prefix": key.prefix, "p_key_hash": key.key_hash, "p_company_id": company_id }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn create_project(
+        &self,
+        bearer: &str,
+        company_id: &str,
+        name: &str,
+    ) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .rpc(
+                    "create_project",
+                    json!({ "p_company_id": company_id, "p_name": name }),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "create_project_with_key",
+                json!({
+                    "p_prefix": key.prefix,
+                    "p_key_hash": key.key_hash,
+                    "p_company_id": company_id,
+                    "p_name": name,
+                }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn list_projects(&self, bearer: &str, company_id: &str) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .get(
+                    &format!(
+                        "my_projects?company_id=eq.{company_id}&select=*&order=created_at.desc"
+                    ),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "list_projects_with_key",
+                json!({ "p_prefix": key.prefix, "p_key_hash": key.key_hash, "p_company_id": company_id }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn pause_agent(&self, bearer: &str, agent_id: &str) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .rpc(
+                    "pause_agent",
+                    json!({ "p_agent_id": agent_id }),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "pause_agent_with_key",
+                json!({ "p_prefix": key.prefix, "p_key_hash": key.key_hash, "p_agent_id": agent_id }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn resume_agent(&self, bearer: &str, agent_id: &str) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .rpc(
+                    "resume_agent",
+                    json!({ "p_agent_id": agent_id }),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "resume_agent_with_key",
+                json!({ "p_prefix": key.prefix, "p_key_hash": key.key_hash, "p_agent_id": agent_id }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn terminate_agent(&self, bearer: &str, agent_id: &str) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .rpc(
+                    "terminate_agent",
+                    json!({ "p_agent_id": agent_id }),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "terminate_agent_with_key",
+                json!({ "p_prefix": key.prefix, "p_key_hash": key.key_hash, "p_agent_id": agent_id }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn create_heartbeat_run(
+        &self,
+        bearer: &str,
+        company_id: &str,
+        agent_id: &str,
+    ) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .rpc(
+                    "create_heartbeat_run",
+                    json!({ "p_company_id": company_id, "p_agent_id": agent_id }),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "create_heartbeat_run_with_key",
+                json!({
+                    "p_prefix": key.prefix,
+                    "p_key_hash": key.key_hash,
+                    "p_company_id": company_id,
+                    "p_agent_id": agent_id,
+                }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn complete_heartbeat_run(
+        &self,
+        bearer: &str,
+        run_id: &str,
+        result_text: &str,
+    ) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .rpc(
+                    "complete_heartbeat_run",
+                    json!({ "p_run_id": run_id, "p_result_text": result_text }),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "complete_heartbeat_run_with_key",
+                json!({
+                    "p_prefix": key.prefix,
+                    "p_key_hash": key.key_hash,
+                    "p_run_id": run_id,
+                    "p_result_text": result_text,
+                }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn ingest_cost_event(
+        &self,
+        bearer: &str,
+        company_id: &str,
+        agent_id: Option<&str>,
+        input_tokens: i64,
+        output_tokens: i64,
+        cost_cents: i64,
+    ) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .rpc(
+                    "ingest_cost_event",
+                    json!({
+                        "p_company_id": company_id,
+                        "p_agent_id": agent_id,
+                        "p_input_tokens": input_tokens,
+                        "p_output_tokens": output_tokens,
+                        "p_cost_cents": cost_cents,
+                    }),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "ingest_cost_event_with_key",
+                json!({
+                    "p_prefix": key.prefix,
+                    "p_key_hash": key.key_hash,
+                    "p_company_id": company_id,
+                    "p_agent_id": agent_id,
+                    "p_input_tokens": input_tokens,
+                    "p_output_tokens": output_tokens,
+                    "p_cost_cents": cost_cents,
+                }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn get_dashboard_summary(
+        &self,
+        bearer: &str,
+        company_id: &str,
+    ) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .rpc(
+                    "get_dashboard_summary",
+                    json!({ "p_company_id": company_id }),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "get_dashboard_summary_with_key",
+                json!({ "p_prefix": key.prefix, "p_key_hash": key.key_hash, "p_company_id": company_id }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn list_activity(&self, bearer: &str, company_id: &str) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .get(
+                    &format!(
+                        "my_activity?company_id=eq.{company_id}&select=*&order=created_at.desc"
+                    ),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "list_activity_with_key",
+                json!({ "p_prefix": key.prefix, "p_key_hash": key.key_hash, "p_company_id": company_id }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn list_cost_events(&self, bearer: &str, company_id: &str) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .get(
+                    &format!(
+                        "my_cost_events?company_id=eq.{company_id}&select=*&order=occurred_at.desc"
+                    ),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "list_cost_events_with_key",
+                json!({ "p_prefix": key.prefix, "p_key_hash": key.key_hash, "p_company_id": company_id }),
+                Auth::Anon,
+            )
+            .await
+    }
+
+    pub async fn list_heartbeat_runs(
+        &self,
+        bearer: &str,
+        company_id: &str,
+    ) -> anyhow::Result<Value> {
+        if let Some(jwt) = self.session_jwt(bearer).await? {
+            return self
+                .data
+                .get(
+                    &format!(
+                        "my_heartbeat_runs?company_id=eq.{company_id}&select=*&order=created_at.desc"
+                    ),
+                    Auth::Bearer(jwt),
+                )
+                .await;
+        }
+        let key = api_key_parts(bearer)?;
+        self.data
+            .rpc(
+                "list_heartbeat_runs_with_key",
+                json!({ "p_prefix": key.prefix, "p_key_hash": key.key_hash, "p_company_id": company_id }),
+                Auth::Anon,
+            )
+            .await
+    }
 }
 
 #[derive(Debug, Clone)]
