@@ -28,7 +28,7 @@ function fakeBackend(): Fetcher {
     if (url.includes("/approvals/") && url.endsWith("/decide") && method === "POST") {
       const approve = (options?.body as { approve: boolean }).approve;
       approvals[0].status = approve ? "approved" : "rejected";
-      agents[0].status = approve ? "active" : "archived";
+      agents[0].status = approve ? "idle" : "terminated";
       return { status: approvals[0].status };
     }
     if (url.endsWith("/jobs") && method === "POST") {
@@ -104,7 +104,7 @@ describe("PaperclipConsole (non-agent user flow)", () => {
     // board approves -> agent becomes active, no pending approvals left
     await wrapper.get('[data-testid="approve"]').trigger("click");
     await flushPromises();
-    expect(wrapper.get('[data-testid="agent-status"]').text()).toBe("active");
+    expect(wrapper.get('[data-testid="agent-status"]').text()).toBe("idle");
     expect(wrapper.find('[data-testid="no-approvals"]').exists()).toBe(true);
   });
 });

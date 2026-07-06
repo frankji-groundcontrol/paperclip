@@ -74,7 +74,7 @@ describe("usePaperclipSession", () => {
   });
 
   it("listAgents and listApprovals read the right endpoints", async () => {
-    const a = await listAgents(mock(() => [{ id: "ag-1", name: "A", role: "r", status: "active" }]).fetcher, "pcs_abc", "co-1");
+    const a = await listAgents(mock(() => [{ id: "ag-1", name: "A", role: "r", status: "idle" }]).fetcher, "pcs_abc", "co-1");
     expect(a[0].id).toBe("ag-1");
     const ap = await listApprovals(mock(() => ({ approvals: [{ id: "ap-1", type: "hire_agent", status: "pending" }] })).fetcher, "pcs_abc", "co-1");
     expect(ap[0].id).toBe("ap-1");
