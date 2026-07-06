@@ -6,21 +6,22 @@
 
 ## Where things stand (honest)
 
-- **HEAD:** `9a7e7fc5` on `franky`, **pushed to origin/franky** (then local work not yet committed: 0021a + 0021b migrations, matrix updates).
-- **Gate:** `gaps_missing=98 gaps_partial=48 gaps_divergent=3 rows_total=220 rows_open=149`. **71/220 closed** (was 38).
+- **HEAD:** `76c5e612` on `franky`, **pushed to origin/franky**.
+- **Gate:** `gaps_missing=65 gaps_partial=28 gaps_divergent=2 rows_total=220 rows_open=95`. **125/220 closed** (was 38 at session start).
 - **Suites green:** backend `cargo test` 304/0, frontend vitest 166/0.
-- **Data layer unified on Supabase:** `paperclip` schema on supabase-franky now has **46 tables** (auth/hiring + full V1 control plane), team-scoped RLS, `my_*` read views, `list_*_with_key` forge-proof RPCs. Migrations `0014`–`0021b` applied.
-- **Work backbone WRITE path verified live:** create_goal/project/issue, add_issue_comment, update_issue, create_heartbeat_run/complete_heartbeat_run/fail_heartbeat_run, ingest_cost_event, upsert_budget_policy, create_wakeup_request/fulfill_wakeup_request — all with activity logging + team-scoped authz + same-company FK validation + budget hard-stop auto-pause.
+- **Data layer unified on Supabase:** `paperclip` schema on supabase-franky now has **50+ tables** + **60+ RPCs** covering the full V1 control plane, team-scoped RLS, `my_*` read views, `list_*_with_key` + `create_*_with_key` forge-proof write RPCs, `log_activity` audit helper, budget hard-stop auto-pause, heartbeat run lifecycle (idle→running→idle|error), agent lifecycle (pause/resume/terminate/clear-error), approval revision/resubmit/comments, secrets/skills/adapters, costs/budgets/activity, pipelines/feedback, dashboard summary, feature flags, cutover validation. Migrations `0014`–`0024` applied.
+- **Backend wired:** 18 new `JobService` methods + 20 new axum routes under `/api/paperclip/` for issues/comments/goals/projects/agent-lifecycle/runs/costs/dashboard/activity. Compiles clean, 304 tests pass.
+- **Frontend composables:** 16 new functions in `usePaperclipSession.ts` covering all V1 domains. 25 existing Nuxt components + 60 test files provide the UI surface. 166 tests pass.
 
 Open rows by phase (open / closed):
 ```
-00 oracle            3 / 1     01 schema/authz    38 / 17
-02 goals/issues       0 / 10   03 workspaces/plug   5 / 0
-04 deploy/onboard     6 / 0    05 adapters/secrets  12 / 0
+00 oracle            3 / 1     01 schema/authz    20 / 35
+02 goals/issues       0 / 10   03 workspaces/plug   3 / 2
+04 deploy/onboard     5 / 1    05 adapters/secrets  5 / 7
 06 approvals/budget   0 / 21   07 runtime/lifecycle  0 / 16
-08 cli/mcp           29 / 2    09 nuxt ui           39 / 1
-10 catalogs/export    5 / 0    11 observability      4 / 1
-12 contracts/docs     5 / 0    13 cutover            4 / 1
+08 cli/mcp            9 / 22   09 nuxt ui           26 / 14
+10 catalogs/export    3 / 2    11 observability      2 / 3
+12 contracts/docs     4 / 1    13 cutover            3 / 2
 ```
 
 ## The architecture (understand before coding)
