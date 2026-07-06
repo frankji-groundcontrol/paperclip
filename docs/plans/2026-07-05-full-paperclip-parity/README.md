@@ -1,5 +1,7 @@
 # Full Paperclip Parity Implementation Plan
 
+> **Next agent: start at [`HANDOFF.md`](HANDOFF.md).** It has the exact current state, the architecture, hard constraints, verification commands, and the precise next chunk to build.
+
 > **Goal:** eliminate the verified parity gap between the current Rust/Supabase/Nuxt rewrite and original Paperclip V1 for agent hiring, governance, runtime, interfaces, and real work execution.
 >
 > **Definition of success:** the rewrite reaches **zero known parity gaps** against `doc/SPEC-implementation.md` and the original TypeScript implementation evidence cited here. A working vertical slice is not enough.
