@@ -123,3 +123,97 @@ export async function decideApproval(
     headers: auth(session),
   })) as { status: string };
 }
+
+// ===== Phase 02/06/07: work backbone + costs + dashboard + agent lifecycle =====
+
+export type Issue = { id: string; title: string; status: string; priority?: string; assignee_agent_id?: string | null };
+export type Goal = { id: string; title: string; level: string; status: string };
+export type Project = { id: string; name: string; status: string };
+export type Comment = { id: string; body: string; author_user_id?: string | null; author_agent_id?: string | null; created_at: string };
+export type Dashboard = Record<string, unknown>;
+export type Activity = { id: string; action: string; actor_type: string; created_at: string };
+export type CostEvent = { id: string; cost_cents: number; input_tokens: number; output_tokens: number; occurred_at: string };
+export type Run = { id: string; agent_id: string; status: string; started_at?: string; finished_at?: string };
+
+export async function createIssue(
+  fetcher: Fetcher, session: string, companyId: string, title: string,
+): Promise<{ issueId: string }> {
+  return (await fetcher(`/api/paperclip/companies/${companyId}/issues`, {
+    method: "POST", body: { title }, headers: auth(session),
+  })) as { issueId: string };
+}
+
+export async function listIssues(fetcher: Fetcher, session: string, companyId: string): Promise<Issue[]> {
+  const data = await fetcher(`/api/paperclip/companies/${companyId}/issues`, { headers: auth(session) });
+  return (Array.isArray(data) ? data : (data as { issues?: Issue[] }).issues ?? []) as Issue[];
+}
+
+export async function addIssueComment(
+  fetcher: Fetcher, session: string, issueId: string, body: string,
+): Promise<{ commentId?: string }> {
+  return (await fetcher(`/api/paperclip/issues/${issueId}/comments`, {
+    method: "POST", body: { body }, headers: auth(session),
+  })) as { commentId?: string };
+}
+
+export async function listIssueComments(fetcher: Fetcher, session: string, issueId: string): Promise<Comment[]> {
+  const data = await fetcher(`/api/paperclip/issues/${issueId}/comments`, { headers: auth(session) });
+  return (Array.isArray(data) ? data : (data as { comments?: Comment[] }).comments ?? []) as Comment[];
+}
+
+export async function createGoal(
+  fetcher: Fetcher, session: string, companyId: string, title: string,
+): Promise<{ goalId: string }> {
+  return (await fetcher(`/api/paperclip/companies/${companyId}/goals`, {
+    method: "POST", body: { title }, headers: auth(session),
+  })) as { goalId: string };
+}
+
+export async function listGoals(fetcher: Fetcher, session: string, companyId: string): Promise<Goal[]> {
+  const data = await fetcher(`/api/paperclip/companies/${companyId}/goals`, { headers: auth(session) });
+  return (Array.isArray(data) ? data : (data as { goals?: Goal[] }).goals ?? []) as Goal[];
+}
+
+export async function createProject(
+  fetcher: Fetcher, session: string, companyId: string, name: string,
+): Promise<{ projectId: string }> {
+  return (await fetcher(`/api/paperclip/companies/${companyId}/projects`, {
+    method: "POST", body: { name }, headers: auth(session),
+  })) as { projectId: string };
+}
+
+export async function listProjects(fetcher: Fetcher, session: string, companyId: string): Promise<Project[]> {
+  const data = await fetcher(`/api/paperclip/companies/${companyId}/projects`, { headers: auth(session) });
+  return (Array.isArray(data) ? data : (data as { projects?: Project[] }).projects ?? []) as Project[];
+}
+
+export async function pauseAgent(fetcher: Fetcher, session: string, agentId: string): Promise<{ status: string }> {
+  return (await fetcher(`/api/paperclip/agents/${agentId}/pause`, { method: "POST", headers: auth(session) })) as { status: string };
+}
+
+export async function resumeAgent(fetcher: Fetcher, session: string, agentId: string): Promise<{ status: string }> {
+  return (await fetcher(`/api/paperclip/agents/${agentId}/resume`, { method: "POST", headers: auth(session) })) as { status: string };
+}
+
+export async function terminateAgent(fetcher: Fetcher, session: string, agentId: string): Promise<{ status: string }> {
+  return (await fetcher(`/api/paperclip/agents/${agentId}/terminate`, { method: "POST", headers: auth(session) })) as { status: string };
+}
+
+export async function getDashboard(fetcher: Fetcher, session: string, companyId: string): Promise<Dashboard> {
+  return (await fetcher(`/api/paperclip/companies/${companyId}/dashboard`, { headers: auth(session) })) as Dashboard;
+}
+
+export async function listActivity(fetcher: Fetcher, session: string, companyId: string): Promise<Activity[]> {
+  const data = await fetcher(`/api/paperclip/companies/${companyId}/activity`, { headers: auth(session) });
+  return (Array.isArray(data) ? data : (data as { activity?: Activity[] }).activity ?? []) as Activity[];
+}
+
+export async function listCostEvents(fetcher: Fetcher, session: string, companyId: string): Promise<CostEvent[]> {
+  const data = await fetcher(`/api/paperclip/companies/${companyId}/cost-events`, { headers: auth(session) });
+  return (Array.isArray(data) ? data : (data as { costEvents?: CostEvent[] }).costEvents ?? []) as CostEvent[];
+}
+
+export async function listRuns(fetcher: Fetcher, session: string, companyId: string): Promise<Run[]> {
+  const data = await fetcher(`/api/paperclip/companies/${companyId}/runs`, { headers: auth(session) });
+  return (Array.isArray(data) ? data : (data as { runs?: Run[] }).runs ?? []) as Run[];
+}
